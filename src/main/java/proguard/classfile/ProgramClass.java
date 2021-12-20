@@ -70,6 +70,8 @@ implements   Clazz
     public Clazz[] subClasses = EMPTY_CLASSES;
     public int     subClassCount;
 
+    public Clazz[] companionClasses = EMPTY_CLASSES;
+
 
     /**
      * Creates an uninitialized ProgramClass.
@@ -411,6 +413,12 @@ implements   Clazz
     }
 
 
+    @Override
+    public void addCompanionClass(Clazz clazz) {
+        companionClasses = ArrayUtil.add(companionClasses, companionClasses.length, clazz);
+    }
+
+
     public Clazz getSuperClass()
     {
         return u2superClass != 0 ?
@@ -623,6 +631,14 @@ implements   Clazz
         for (int index = 0; index < subClassCount; index++)
         {
             subClasses[index].accept(classVisitor);
+        }
+    }
+
+
+    @Override
+    public void companionClassesAccept(ClassVisitor classVisitor) {
+        for (Clazz companionClass : companionClasses) {
+            companionClass.accept(classVisitor);
         }
     }
 

@@ -85,6 +85,8 @@ implements   ClassVisitor,
         // Visit the constant pool entries.
         programClass.constantPoolEntriesAccept(this);
 
+        programClass.companionClassesAccept(classVisitor);
+
         // Visit the fields and methods.
         programClass.fieldsAccept(this);
         programClass.methodsAccept(this);
@@ -105,6 +107,8 @@ implements   ClassVisitor,
         // Visit the superclass and interfaces.
         libraryClass.superClassAccept(classVisitor);
         libraryClass.interfacesAccept(classVisitor);
+
+        libraryClass.companionClassesAccept(classVisitor);
 
         // Visit the fields and methods.
         libraryClass.fieldsAccept(this);
