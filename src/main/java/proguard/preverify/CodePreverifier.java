@@ -204,13 +204,12 @@ implements   AttributeVisitor
             }
         }
 
-        if (frameCount == 0)
-        {
-            // Remove any stack map (table) attribute from the code attribute.
-            new AttributesEditor(programClass, programMethod, codeAttribute, true).deleteAttribute(stackMapAttributeName);
-        }
-        else
-        {
+        // Remove any stack map (table) attribute from the code attribute.
+        // Delete both old and new stack map attributes otherwise we could end up with a class retargeted from J2ME to J2SE that has both attributes
+        new AttributesEditor(programClass, programMethod, codeAttribute, true).deleteAttribute(Attribute.STACK_MAP);
+        new AttributesEditor(programClass, programMethod, codeAttribute, true).deleteAttribute(Attribute.STACK_MAP_TABLE);
+
+        if (frameCount != 0) {
             Attribute stackMapAttribute;
 
             // Create the appropriate attribute.
