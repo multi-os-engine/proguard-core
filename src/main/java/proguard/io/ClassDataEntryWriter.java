@@ -90,7 +90,14 @@ public class ClassDataEntryWriter implements DataEntryWriter
                 }
 
                 // Get the output stream for this input entry.
-                OutputStream outputStream = dataEntryWriter.createOutputStream(dataEntry);
+                OutputStream outputStream;
+                try {
+                    // MOE: allow duplicated program class
+                    outputStream = dataEntryWriter.createOutputStream(dataEntry);
+                } catch (IOException ex) {
+                    System.err.println("Warning: can't write class [" + dataEntry.getName() + "] (" + ex.getMessage() + ")");
+                    outputStream = null;
+                }
                 if (outputStream != null)
                 {
                     // Write the class to the output stream.
