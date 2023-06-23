@@ -17,7 +17,6 @@
  */
 package proguard.classfile.kotlin;
 
-import kotlinx.metadata.*;
 import proguard.classfile.*;
 import proguard.classfile.kotlin.flags.KotlinTypeParameterFlags;
 import proguard.classfile.kotlin.visitor.*;
@@ -27,23 +26,24 @@ import java.util.*;
 
 public class KotlinTypeParameterMetadata
 extends      SimpleProcessable
-implements   Processable
+implements   Processable,
+             KotlinAnnotatable
 {
     public String name;
 
     public int id;
 
-    public KmVariance variance;
+    public KotlinTypeVariance variance;
 
     public List<KotlinTypeMetadata> upperBounds;
 
     public KotlinTypeParameterFlags flags;
 
     // Extensions.
-    public List<KotlinMetadataAnnotation> annotations;
+    public List<KotlinAnnotation> annotations;
 
 
-    public KotlinTypeParameterMetadata(KotlinTypeParameterFlags flags, String name, int id, KmVariance variance)
+    public KotlinTypeParameterMetadata(KotlinTypeParameterFlags flags, String name, int id, KotlinTypeVariance variance)
     {
         this.name     = name;
         this.id       = id;
@@ -99,7 +99,7 @@ implements   Processable
     public void annotationsAccept(Clazz                   clazz,
                                   KotlinAnnotationVisitor kotlinAnnotationVisitor)
     {
-        for (KotlinMetadataAnnotation annotation : annotations)
+        for (KotlinAnnotation annotation : annotations)
         {
             kotlinAnnotationVisitor.visitTypeParameterAnnotation(clazz, this, annotation);
         }

@@ -8,36 +8,36 @@
 package proguard.classfile.kotlin
 
 import io.kotest.core.spec.style.FreeSpec
-import io.kotest.matchers.maps.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.mockk.slot
 import io.mockk.spyk
 import io.mockk.verify
-import kotlinx.metadata.KmAnnotation
-import kotlinx.metadata.KmAnnotationArgument.AnnotationValue
-import kotlinx.metadata.KmAnnotationArgument.ArrayValue
-import kotlinx.metadata.KmAnnotationArgument.BooleanValue
-import kotlinx.metadata.KmAnnotationArgument.ByteValue
-import kotlinx.metadata.KmAnnotationArgument.CharValue
-import kotlinx.metadata.KmAnnotationArgument.DoubleValue
-import kotlinx.metadata.KmAnnotationArgument.EnumValue
-import kotlinx.metadata.KmAnnotationArgument.FloatValue
-import kotlinx.metadata.KmAnnotationArgument.IntValue
-import kotlinx.metadata.KmAnnotationArgument.KClassValue
-import kotlinx.metadata.KmAnnotationArgument.LongValue
-import kotlinx.metadata.KmAnnotationArgument.ShortValue
-import kotlinx.metadata.KmAnnotationArgument.StringValue
-import kotlinx.metadata.KmAnnotationArgument.UByteValue
-import kotlinx.metadata.KmAnnotationArgument.UIntValue
-import kotlinx.metadata.KmAnnotationArgument.ULongValue
-import kotlinx.metadata.KmAnnotationArgument.UShortValue
+import io.mockk.verifyAll
 import proguard.classfile.Clazz
 import proguard.classfile.ProgramClass
-import proguard.classfile.kotlin.visitor.AllFunctionsVisitor
+import proguard.classfile.kotlin.KotlinAnnotationArgument.ArrayValue
+import proguard.classfile.kotlin.KotlinAnnotationArgument.BooleanValue
+import proguard.classfile.kotlin.KotlinAnnotationArgument.ByteValue
+import proguard.classfile.kotlin.KotlinAnnotationArgument.CharValue
+import proguard.classfile.kotlin.KotlinAnnotationArgument.ClassValue
+import proguard.classfile.kotlin.KotlinAnnotationArgument.DoubleValue
+import proguard.classfile.kotlin.KotlinAnnotationArgument.EnumValue
+import proguard.classfile.kotlin.KotlinAnnotationArgument.FloatValue
+import proguard.classfile.kotlin.KotlinAnnotationArgument.IntValue
+import proguard.classfile.kotlin.KotlinAnnotationArgument.LongValue
+import proguard.classfile.kotlin.KotlinAnnotationArgument.ShortValue
+import proguard.classfile.kotlin.KotlinAnnotationArgument.StringValue
+import proguard.classfile.kotlin.KotlinAnnotationArgument.UByteValue
+import proguard.classfile.kotlin.KotlinAnnotationArgument.UIntValue
+import proguard.classfile.kotlin.KotlinAnnotationArgument.ULongValue
+import proguard.classfile.kotlin.KotlinAnnotationArgument.UShortValue
+import proguard.classfile.kotlin.visitor.AllFunctionVisitor
+import proguard.classfile.kotlin.visitor.AllKotlinAnnotationArgumentVisitor
 import proguard.classfile.kotlin.visitor.AllKotlinAnnotationVisitor
 import proguard.classfile.kotlin.visitor.AllTypeAliasVisitor
 import proguard.classfile.kotlin.visitor.AllTypeParameterVisitor
+import proguard.classfile.kotlin.visitor.KotlinAnnotationArgumentVisitor
 import proguard.classfile.kotlin.visitor.KotlinAnnotationVisitor
 import proguard.classfile.kotlin.visitor.ReferencedKotlinMetadataVisitor
 import proguard.classfile.kotlin.visitor.filter.KotlinFunctionFilter
@@ -119,50 +119,217 @@ class KotlinMetadataAnnotationTest : FreeSpec({
     )
 
     "Given a type alias with 1 annotation" - {
-        val annotationVisitor = spyk<KotlinAnnotationVisitor>()
-        val allAnnotationVisitor = AllKotlinAnnotationVisitor(annotationVisitor)
         val fileFacadeClass = programClassPool.getClass("TestKt")
-        programClassPool.classesAccept(
-            ReferencedKotlinMetadataVisitor(
-                AllTypeAliasVisitor(allAnnotationVisitor)
-            )
-        )
-        val annotation = slot<KotlinMetadataAnnotation>()
 
         "Then there should be 1 annotation visited" {
-            verify(exactly = 1) { annotationVisitor.visitTypeAliasAnnotation(fileFacadeClass, ofType(KotlinTypeAliasMetadata::class), capture(annotation)) }
-        }
+            val annotationVisitor = spyk<KotlinAnnotationVisitor>()
+            val allAnnotationVisitor = AllKotlinAnnotationVisitor(annotationVisitor)
 
-        "Then the annotation class name should be correct" {
-            annotation.captured.kmAnnotation.className shouldBe "MyTypeAliasAnnotation"
-        }
-
-        "Then the referenced class should be visited" {
-            val classVisitor = spyk<ClassVisitor>()
-            annotation.captured.referencedClassAccept(classVisitor)
-            verify(exactly = 1) { classVisitor.visitProgramClass(programClassPool.getClass("MyTypeAliasAnnotation") as ProgramClass) }
-        }
-
-        "Then the field values should be correct" {
-            annotation.captured.kmAnnotation.arguments shouldContainExactly mapOf(
-                "string" to StringValue("foo"),
-                "byte" to ByteValue(1),
-                "char" to CharValue('a'),
-                "short" to ShortValue(1),
-                "int" to IntValue(1),
-                "long" to LongValue(1L),
-                "float" to FloatValue(1f),
-                "double" to DoubleValue(1.0),
-                "boolean" to BooleanValue(true),
-                "uByte" to UByteValue(1),
-                "uShort" to UShortValue(1),
-                "uInt" to UIntValue(1),
-                "uLong" to ULongValue(1L),
-                "kClass" to KClassValue("kotlin/String"),
-                "enum" to EnumValue("MyEnum", "FOO"),
-                "array" to ArrayValue(listOf(StringValue("foo"), StringValue("bar"))),
-                "annotation" to AnnotationValue(KmAnnotation("Foo", mapOf("string" to StringValue("foo"))))
+            programClassPool.classesAccept(
+                ReferencedKotlinMetadataVisitor(
+                    AllTypeAliasVisitor(allAnnotationVisitor)
+                )
             )
+
+            verify(exactly = 1) {
+                annotationVisitor.visitTypeAliasAnnotation(
+                    fileFacadeClass,
+                    ofType(KotlinTypeAliasMetadata::class),
+                    withArg {
+                        it.className shouldBe "MyTypeAliasAnnotation"
+                    }
+                )
+            }
+        }
+
+        "Then the referenced class should be visitable" {
+            val classVisitor = spyk<ClassVisitor>()
+            val annotationVisitor = KotlinAnnotationVisitor { _, _, annotation ->
+                annotation.referencedClassAccept(classVisitor)
+            }
+            val allAnnotationVisitor = AllKotlinAnnotationVisitor(annotationVisitor)
+
+            programClassPool.classesAccept(
+                ReferencedKotlinMetadataVisitor(
+                    AllTypeAliasVisitor(allAnnotationVisitor)
+                )
+            )
+
+            verify(exactly = 1) {
+                classVisitor.visitProgramClass(
+                    programClassPool.getClass("MyTypeAliasAnnotation") as ProgramClass
+                )
+            }
+        }
+
+        "Then the argument values should be correct" {
+            val annotationArgVisitor = spyk<KotlinAnnotationArgumentVisitor>()
+
+            programClassPool.classesAccept(
+                ReferencedKotlinMetadataVisitor(
+                    AllTypeAliasVisitor(
+                        AllKotlinAnnotationVisitor(
+                            AllKotlinAnnotationArgumentVisitor(annotationArgVisitor)
+                        )
+                    )
+                )
+            )
+
+            verifyAll {
+                annotationArgVisitor.visitAnyArgument(
+                    programClassPool.getClass("TestKt"),
+                    ofType<KotlinAnnotatable>(),
+                    ofType<KotlinAnnotation>(),
+                    ofType<KotlinAnnotationArgument>(),
+                    ofType<KotlinAnnotationArgument.Value>()
+                )
+
+                annotationArgVisitor.visitAnyLiteralArgument(
+                    programClassPool.getClass("TestKt"),
+                    ofType<KotlinAnnotatable>(),
+                    ofType<KotlinAnnotation>(),
+                    ofType<KotlinAnnotationArgument>(),
+                    ofType<KotlinAnnotationArgument.LiteralValue<*>>()
+                )
+
+                annotationArgVisitor.visitStringArgument(
+                    programClassPool.getClass("TestKt"),
+                    ofType<KotlinAnnotatable>(),
+                    ofType<KotlinAnnotation>(),
+                    withArg { it.name shouldBe "string" },
+                    StringValue("foo")
+                )
+
+                annotationArgVisitor.visitByteArgument(
+                    programClassPool.getClass("TestKt"),
+                    ofType<KotlinAnnotatable>(),
+                    ofType<KotlinAnnotation>(),
+                    withArg { it.name shouldBe "byte" },
+                    ByteValue(1)
+                )
+
+                annotationArgVisitor.visitCharArgument(
+                    programClassPool.getClass("TestKt"),
+                    ofType<KotlinAnnotatable>(),
+                    ofType<KotlinAnnotation>(),
+                    withArg { it.name shouldBe "char" },
+                    CharValue('a')
+                )
+
+                annotationArgVisitor.visitShortArgument(
+                    programClassPool.getClass("TestKt"),
+                    ofType<KotlinAnnotatable>(),
+                    ofType<KotlinAnnotation>(),
+                    withArg { it.name shouldBe "short" },
+                    ShortValue(1)
+                )
+
+                annotationArgVisitor.visitIntArgument(
+                    programClassPool.getClass("TestKt"),
+                    ofType<KotlinAnnotatable>(),
+                    ofType<KotlinAnnotation>(),
+                    withArg { it.name shouldBe "int" },
+                    IntValue(1)
+                )
+
+                annotationArgVisitor.visitLongArgument(
+                    programClassPool.getClass("TestKt"),
+                    ofType<KotlinAnnotatable>(),
+                    ofType<KotlinAnnotation>(),
+                    withArg { it.name shouldBe "long" },
+                    LongValue(1L)
+                )
+
+                annotationArgVisitor.visitFloatArgument(
+                    programClassPool.getClass("TestKt"),
+                    ofType<KotlinAnnotatable>(),
+                    ofType<KotlinAnnotation>(),
+                    withArg { it.name shouldBe "float" },
+                    FloatValue(1f)
+                )
+
+                annotationArgVisitor.visitDoubleArgument(
+                    programClassPool.getClass("TestKt"),
+                    ofType<KotlinAnnotatable>(),
+                    ofType<KotlinAnnotation>(),
+                    withArg { it.name shouldBe "double" },
+                    DoubleValue(1.0)
+                )
+
+                annotationArgVisitor.visitBooleanArgument(
+                    programClassPool.getClass("TestKt"),
+                    ofType<KotlinAnnotatable>(),
+                    ofType<KotlinAnnotation>(),
+                    withArg { it.name shouldBe "boolean" },
+                    BooleanValue(true)
+                )
+
+                annotationArgVisitor.visitUByteArgument(
+                    programClassPool.getClass("TestKt"),
+                    ofType<KotlinAnnotatable>(),
+                    ofType<KotlinAnnotation>(),
+                    withArg { it.name shouldBe "uByte" },
+                    UByteValue(1)
+                )
+
+                annotationArgVisitor.visitUShortArgument(
+                    programClassPool.getClass("TestKt"),
+                    ofType<KotlinAnnotatable>(),
+                    ofType<KotlinAnnotation>(),
+                    withArg { it.name shouldBe "uShort" },
+                    UShortValue(1)
+                )
+
+                annotationArgVisitor.visitUIntArgument(
+                    programClassPool.getClass("TestKt"),
+                    ofType<KotlinAnnotatable>(),
+                    ofType<KotlinAnnotation>(),
+                    withArg { it.name shouldBe "uInt" },
+                    UIntValue(1)
+                )
+
+                annotationArgVisitor.visitULongArgument(
+                    programClassPool.getClass("TestKt"),
+                    ofType<KotlinAnnotatable>(),
+                    ofType<KotlinAnnotation>(),
+                    withArg { it.name shouldBe "uLong" },
+                    ULongValue(1)
+                )
+
+                annotationArgVisitor.visitEnumArgument(
+                    programClassPool.getClass("TestKt"),
+                    ofType<KotlinAnnotatable>(),
+                    ofType<KotlinAnnotation>(),
+                    withArg { it.name shouldBe "enum" },
+                    EnumValue("MyEnum", "FOO")
+                )
+
+                annotationArgVisitor.visitArrayArgument(
+                    programClassPool.getClass("TestKt"),
+                    ofType<KotlinAnnotatable>(),
+                    ofType<KotlinAnnotation>(),
+                    withArg { it.name shouldBe "array" },
+                    ArrayValue(listOf(StringValue("foo"), StringValue("bar")))
+                )
+
+                annotationArgVisitor.visitAnnotationArgument(
+                    programClassPool.getClass("TestKt"),
+                    ofType<KotlinAnnotatable>(),
+                    ofType<KotlinAnnotation>(),
+                    withArg { it.name shouldBe "annotation" },
+                    withArg {
+                        it.kotlinMetadataAnnotation.className shouldBe "Foo"
+                    }
+                )
+
+                annotationArgVisitor.visitClassArgument(
+                    programClassPool.getClass("TestKt"),
+                    ofType<KotlinAnnotatable>(),
+                    ofType<KotlinAnnotation>(),
+                    withArg { it.name shouldBe "kClass" },
+                    ClassValue("kotlin/String")
+                )
+            }
         }
     }
 
@@ -172,14 +339,14 @@ class KotlinMetadataAnnotationTest : FreeSpec({
         val fileFacadeClass = programClassPool.getClass("TestKt")
 
         programClassPool.classesAccept(ReferencedKotlinMetadataVisitor(allAnnotationVisitor))
-        val annotation = slot<KotlinMetadataAnnotation>()
+        val annotation = slot<KotlinAnnotation>()
 
         "Then there should be 1 annotation visited" {
             verify(exactly = 1) { annotationVisitor.visitTypeAnnotation(fileFacadeClass, ofType(KotlinTypeMetadata::class), capture(annotation)) }
         }
 
         "Then the annotation class name should be correct" {
-            annotation.captured.kmAnnotation.className shouldBe "MyTypeAnnotation"
+            annotation.captured.className shouldBe "MyTypeAnnotation"
         }
     }
 
@@ -190,7 +357,7 @@ class KotlinMetadataAnnotationTest : FreeSpec({
 
         programClassPool.classesAccept(
             ReferencedKotlinMetadataVisitor(
-                AllFunctionsVisitor(
+                AllFunctionVisitor(
                     KotlinFunctionFilter(
                         Predicate { func -> func.name == "foo" },
                         AllTypeParameterVisitor(
@@ -200,19 +367,19 @@ class KotlinMetadataAnnotationTest : FreeSpec({
                 )
             )
         )
-        val annotation = slot<KotlinMetadataAnnotation>()
+        val annotation = slot<KotlinAnnotation>()
 
         "Then there should be 1 annotation visited" {
             verify(exactly = 1) { annotationVisitor.visitTypeParameterAnnotation(fileFacadeClass, ofType(KotlinTypeParameterMetadata::class), capture(annotation)) }
         }
 
         "Then the annotation class name should be correct" {
-            annotation.captured.kmAnnotation.className shouldBe "MyTypeParamAnnotation"
+            annotation.captured.className shouldBe "MyTypeParamAnnotation"
         }
     }
 
     "Given an annotation without the referenced class initialized" - {
-        val annotation = KotlinMetadataAnnotation(KmAnnotation("A", emptyMap()))
+        val annotation = KotlinAnnotation("A")
 
         "Then the referenced class should not be visited" {
             val classVisitor = spyk<ClassVisitor>()
@@ -224,15 +391,13 @@ class KotlinMetadataAnnotationTest : FreeSpec({
     // Basic equality tests
 
     "Given an annotation" - {
-        val annotation1 = KotlinMetadataAnnotation(
-            KmAnnotation(
-                "A",
-                mapOf("arg1" to StringValue("foo"))
-            )
+        val annotation1 = KotlinAnnotation(
+            "A",
+            listOf(KotlinAnnotationArgument("arg1", StringValue("foo")))
         )
 
         "Then the toString should printed a string representation" {
-            annotation1.toString() shouldBe "A({arg1=StringValue(value=foo)})"
+            annotation1.toString() shouldBe "A(arg1 = foo)"
         }
 
         "Then it should not be equal to null" {
@@ -249,8 +414,8 @@ class KotlinMetadataAnnotationTest : FreeSpec({
     }
 
     "Given 2 annotations with the same name" - {
-        val annotation1 = KotlinMetadataAnnotation(KmAnnotation("A", emptyMap()))
-        val annotation2 = KotlinMetadataAnnotation(KmAnnotation("A", emptyMap()))
+        val annotation1 = KotlinAnnotation("A")
+        val annotation2 = KotlinAnnotation("A")
 
         "Then they should be equal" {
             annotation1 shouldBe annotation2
@@ -262,18 +427,14 @@ class KotlinMetadataAnnotationTest : FreeSpec({
     }
 
     "Given 2 annotations with the same name and arguments" - {
-        val annotation1 = KotlinMetadataAnnotation(
-            KmAnnotation(
-                "A",
-                mapOf("arg1" to StringValue("foo"))
-            )
+        val annotation1 = KotlinAnnotation(
+            "A",
+            listOf(KotlinAnnotationArgument("arg1", StringValue("foo")))
         )
 
-        val annotation2 = KotlinMetadataAnnotation(
-            KmAnnotation(
-                "A",
-                mapOf("arg1" to StringValue("foo"))
-            )
+        val annotation2 = KotlinAnnotation(
+            "A",
+            listOf(KotlinAnnotationArgument("arg1", StringValue("foo")))
         )
 
         "Then they should be equal" {
@@ -286,18 +447,14 @@ class KotlinMetadataAnnotationTest : FreeSpec({
     }
 
     "Given 2 annotations with the same name and different arguments" - {
-        val annotation1 = KotlinMetadataAnnotation(
-            KmAnnotation(
-                "A",
-                mapOf("arg1" to StringValue("foo"))
-            )
+        val annotation1 = KotlinAnnotation(
+            "A",
+            listOf(KotlinAnnotationArgument("arg1", StringValue("foo")))
         )
 
-        val annotation2 = KotlinMetadataAnnotation(
-            KmAnnotation(
-                "A",
-                mapOf("arg1" to StringValue("bar"))
-            )
+        val annotation2 = KotlinAnnotation(
+            "A",
+            listOf(KotlinAnnotationArgument("arg1", StringValue("bar")))
         )
 
         "Then they should not be equal" {
@@ -310,8 +467,8 @@ class KotlinMetadataAnnotationTest : FreeSpec({
     }
 
     "Given 2 annotations with different names" - {
-        val annotation1 = KotlinMetadataAnnotation(KmAnnotation("A", emptyMap()))
-        val annotation2 = KotlinMetadataAnnotation(KmAnnotation("B", emptyMap()))
+        val annotation1 = KotlinAnnotation("A")
+        val annotation2 = KotlinAnnotation("B")
 
         "Then they should not be equal" {
             annotation1 shouldNotBe annotation2
@@ -323,18 +480,14 @@ class KotlinMetadataAnnotationTest : FreeSpec({
     }
 
     "Given 2 annotations with different name and arguments" - {
-        val annotation1 = KotlinMetadataAnnotation(
-            KmAnnotation(
-                "A",
-                mapOf("arg1" to StringValue("foo"))
-            )
+        val annotation1 = KotlinAnnotation(
+            "A",
+            listOf(KotlinAnnotationArgument("arg1", StringValue("foo")))
         )
 
-        val annotation2 = KotlinMetadataAnnotation(
-            KmAnnotation(
-                "B",
-                mapOf("arg1" to StringValue("bar"))
-            )
+        val annotation2 = KotlinAnnotation(
+            "B",
+            listOf(KotlinAnnotationArgument("arg1", StringValue("bar")))
         )
 
         "Then they should not be equal" {

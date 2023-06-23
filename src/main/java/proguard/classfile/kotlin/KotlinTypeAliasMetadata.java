@@ -26,7 +26,8 @@ import java.util.*;
 
 public class KotlinTypeAliasMetadata
 extends      SimpleProcessable
-implements   Processable
+implements   Processable,
+             KotlinAnnotatable
 {
     public String name;
 
@@ -45,7 +46,7 @@ implements   Processable
     // The container where the alias is declared.
     public KotlinDeclarationContainerMetadata referencedDeclarationContainer;
 
-    public List<KotlinMetadataAnnotation> annotations;
+    public List<KotlinAnnotation> annotations;
 
 
     public KotlinTypeAliasMetadata(KotlinTypeAliasFlags flags, String name)
@@ -105,7 +106,7 @@ implements   Processable
     public void annotationsAccept(Clazz                   clazz,
                                   KotlinAnnotationVisitor kotlinAnnotationVisitor)
     {
-        for (KotlinMetadataAnnotation annotation : annotations)
+        for (KotlinAnnotation annotation : annotations)
         {
             kotlinAnnotationVisitor.visitTypeAliasAnnotation(clazz, this, annotation);
         }

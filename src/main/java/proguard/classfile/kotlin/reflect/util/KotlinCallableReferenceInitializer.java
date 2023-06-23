@@ -88,10 +88,12 @@ implements   KotlinMetadataVisitor
 
                 if (clazz.extendsOrImplements(REFLECTION.FUNCTION_REFERENCE_CLASS_NAME))
                 {
-                    Method method =
-                        memberFinder.findMethod(result.callableOwnerClass,
-                                                result.callableName,
-                                                result.callableSignature.substring(result.callableSignature.indexOf('(')));
+                    int descriptorStart = result.callableSignature.indexOf('(');
+                    Method method = descriptorStart == -1 ?
+                                        null :
+                                        memberFinder.findMethod(result.callableOwnerClass,
+                                                                result.callableName,
+                                                                result.callableSignature.substring(descriptorStart));
 
                     if (method != null)
                     {
@@ -140,7 +142,7 @@ implements   KotlinMetadataVisitor
                             result.callableOwnerClass.hierarchyAccept(
                                 true, true, false, false,
                                 new ReferencedKotlinMetadataVisitor(
-                                new AllKotlinPropertiesVisitor(
+                                new AllPropertyVisitor(
                                 new KotlinPropertyFilter(
                                     prop -> prop.name.equals(result.callableName),
                                     (_clazz, declarationContainerMetadata, propertyMetadata) -> {
@@ -165,10 +167,12 @@ implements   KotlinMetadataVisitor
                     {
                         // If we couldn't find any in the Kotlin metadata, we can search for the field by name/descriptor (assuming there is a backing field).
 
-                        Field field =
-                            memberFinder.findField(result.callableOwnerClass,
-                                                   result.callableName,
-                                                   result.callableSignature.substring(result.callableSignature.lastIndexOf(')') + 1));
+                        int descriptorEnd = result.callableSignature.lastIndexOf(')');
+                        Field field = descriptorEnd == -1 ?
+                                        null :
+                                        memberFinder.findField(result.callableOwnerClass,
+                                                               result.callableName,
+                                                               result.callableSignature.substring(descriptorEnd + 1));
 
                         if (field != null)
                         {
@@ -308,9 +312,14 @@ implements   KotlinMetadataVisitor
                                 result.callableOwnerMetadata = declarationContainer;
                             }
                         });
+
+                        if (result.callableName      != null &&
+                            result.callableSignature != null)
+                        {
+                            this.consumer.accept(result);
+                        }
                     }
 
-                    this.consumer.accept(result);
                     break;
                 }
             }
@@ -346,9 +355,13 @@ implements   KotlinMetadataVisitor
             if (result.callableOwnerClass != null)
             {
                 result.callableOwnerClass.kotlinMetadataAccept(this);
-            }
 
-            this.infoLoaderResultConsumer.accept(result);
+                if (result.callableName      != null &&
+                    result.callableSignature != null)
+                {
+                    this.infoLoaderResultConsumer.accept(result);
+                }
+            }
         }
 
         // Implementations for MemberVisitor.

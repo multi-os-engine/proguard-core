@@ -19,27 +19,30 @@ package proguard.classfile.kotlin.visitor;
 
 import proguard.classfile.Clazz;
 import proguard.classfile.kotlin.*;
-import proguard.classfile.visitor.ClassVisitor;
 
-public class KotlinInterfaceToDefaultImplsClassVisitor
-implements   KotlinMetadataVisitor
+/**
+ * This KotlinMetadataVisitor lets a given KotlinPropertyVisitor visit all properties
+ * (regular and delegated) of visited KotlinDeclarationContainerMetadata.
+ */
+public class AllPropertyVisitor
+implements KotlinMetadataVisitor
 {
+    private final KotlinPropertyVisitor delegatePropertyVisitor;
 
-    private final ClassVisitor classVisitor;
-
-    public KotlinInterfaceToDefaultImplsClassVisitor(ClassVisitor classVisitor) {
-        this.classVisitor = classVisitor;
+    public AllPropertyVisitor(KotlinPropertyVisitor kotlinPropertyVisitor)
+    {
+        this.delegatePropertyVisitor = kotlinPropertyVisitor;
     }
 
+    // Implementations for KotlinMetadataVisitor.
     @Override
     public void visitAnyKotlinMetadata(Clazz clazz, KotlinMetadata kotlinMetadata) {}
 
     @Override
-    public void visitKotlinClassMetadata(Clazz clazz, KotlinClassKindMetadata kotlinClassKindMetadata)
+    public void visitKotlinDeclarationContainerMetadata(Clazz clazz,
+                                                        KotlinDeclarationContainerMetadata kotlinDeclarationContainerMetadata)
     {
-        if (kotlinClassKindMetadata.flags.isInterface && kotlinClassKindMetadata.referencedDefaultImplsClass != null)
-        {
-            kotlinClassKindMetadata.referencedDefaultImplsClass.accept(this.classVisitor);
-        }
+        kotlinDeclarationContainerMetadata.propertiesAccept(         clazz, delegatePropertyVisitor);
+        kotlinDeclarationContainerMetadata.delegatedPropertiesAccept(clazz, delegatePropertyVisitor);
     }
 }
