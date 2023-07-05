@@ -18,12 +18,15 @@
 package proguard.classfile.util.kotlin;
 
 import kotlinx.metadata.*;
+import kotlinx.metadata.internal.metadata.jvm.deserialization.JvmMetadataVersion;
 import kotlinx.metadata.jvm.JvmFieldSignature;
 import kotlinx.metadata.jvm.JvmMethodSignature;
 import kotlinx.metadata.jvm.*;
 import proguard.classfile.*;
 import proguard.classfile.attribute.annotation.*;
 import proguard.classfile.attribute.annotation.visitor.*;
+import proguard.classfile.attribute.visitor.AllAttributeVisitor;
+import proguard.classfile.attribute.visitor.AttributeNameFilter;
 import proguard.classfile.constant.*;
 import proguard.classfile.constant.visitor.ConstantVisitor;
 import proguard.classfile.kotlin.*;
@@ -32,8 +35,12 @@ import proguard.classfile.util.*;
 import proguard.classfile.visitor.ClassVisitor;
 
 import java.util.*;
+import java.util.function.BiConsumer;
 
+import static java.util.stream.Collectors.*;
+import static proguard.classfile.attribute.Attribute.*;
 import static proguard.classfile.kotlin.KotlinConstants.*;
+import static proguard.classfile.util.kotlin.KotlinAnnotationUtilKt.convertAnnotation;
 
 /**
  * Initializes the kotlin metadata for each Kotlin class. After initialization, all
@@ -41,7 +48,8 @@ import static proguard.classfile.kotlin.KotlinConstants.*;
  * lists in kotlinMetadata are initialized, even if empty.
  */
 public class KotlinMetadataInitializer
-implements AnnotationVisitor,
+implements ClassVisitor,
+           AnnotationVisitor,
 
            // Implementation interfaces.
            ElementValueVisitor,
@@ -50,21 +58,45 @@ implements AnnotationVisitor,
     // For original definitions see https://github.com/JetBrains/kotlin/blob/master/libraries/stdlib/jvm/runtime/kotlin/Metadata.kt
     private int      k;
     private int[]    mv;
-    private int[]    bv;
     private String[] d1;
     private String[] d2;
     private int      xi;
     private String   xs;
     private String   pn;
 
+    public static final KotlinMetadataVersion MAX_SUPPORTED_VERSION;
+
+    static {
+        int[] version = JvmMetadataVersion.INSTANCE.toArray();
+        MAX_SUPPORTED_VERSION = new KotlinMetadataVersion(version[0], version[1] + 1);
+    }
+
     // For Constant visiting
     private MetadataType currentType;
 
-    private final WarningPrinter warningPrinter;
+    private final BiConsumer<Clazz, String> errorHandler;
 
     public KotlinMetadataInitializer(WarningPrinter warningPrinter)
     {
-        this.warningPrinter = warningPrinter;
+        this((clazz, message) -> warningPrinter.print(clazz.getName(), message));
+    }
+
+    public KotlinMetadataInitializer(BiConsumer<Clazz, String> errorHandler)
+    {
+        this.errorHandler = errorHandler;
+    }
+
+    // Implementations for ClassVisitor
+
+    @Override
+    public void visitAnyClass(Clazz clazz)
+    {
+        clazz.accept(
+                new AllAttributeVisitor(
+                new AttributeNameFilter(RUNTIME_VISIBLE_ANNOTATIONS,
+                new AllAnnotationVisitor(
+                new AnnotationTypeFilter(TYPE_KOTLIN_METADATA,
+                        this)))));
     }
 
 
@@ -75,7 +107,6 @@ implements AnnotationVisitor,
         // Collect the metadata.
         this.k  = -1;
         this.mv = null; //new int[] { 1, 0, 0 };
-        this.bv = null; //new int[] { 1, 0, 0 };
         this.d1 = null; //new String[0];
         this.d2 = null; //new String[0];
         this.xi = 0; // Optional flags, the `xi` annotation field may not be present so default to none set.
@@ -86,10 +117,12 @@ implements AnnotationVisitor,
 
 
         // Parse the collected metadata.
-        KotlinClassMetadata md = KotlinClassMetadata.read(new KotlinClassHeader(k, mv, bv, d1, d2, xs, pn, xi));
+        KotlinClassMetadata md = KotlinClassMetadata.read(new KotlinClassHeader(k, mv, d1, d2, xs, pn, xi));
         if (md == null)
         {
-            throw new UnsupportedOperationException("Encountered corrupt @kotlin/Metadata for class " + clazz.getName() + ".");
+            String version = mv == null ? "unknown" : Arrays.stream(mv).mapToObj(Integer::toString).collect(joining("."));
+            this.errorHandler.accept(clazz, "Encountered corrupt @kotlin/Metadata for class " + clazz.getName() + " (version " + version + ").");
+            return;
         }
 
         try
@@ -97,7 +130,7 @@ implements AnnotationVisitor,
             switch (k)
             {
                 case METADATA_KIND_CLASS:
-                    KotlinClassKindMetadata kotlinClassKindMetadata = new KotlinClassKindMetadata(mv, bv, xi, xs, pn);
+                    KotlinClassKindMetadata kotlinClassKindMetadata = new KotlinClassKindMetadata(mv, xi, xs, pn);
 
                     ((KotlinClassMetadata.Class)md).accept(new ClassReader(kotlinClassKindMetadata));
 
@@ -107,7 +140,6 @@ implements AnnotationVisitor,
 
                 case METADATA_KIND_FILE_FACADE: // For package level functions/properties
                     KotlinFileFacadeKindMetadata kotlinFileFacadeKindMetadata = new KotlinFileFacadeKindMetadata(mv,
-                                                                                                                 bv,
                                                                                                                  xi,
                                                                                                                  xs,
                                                                                                                  pn);
@@ -141,7 +173,7 @@ implements AnnotationVisitor,
                     }
 
                     KotlinSyntheticClassKindMetadata kotlinSyntheticClassKindMetadata =
-                        new KotlinSyntheticClassKindMetadata(mv, bv, xi, xs, pn, flavor);
+                        new KotlinSyntheticClassKindMetadata(mv, xi, xs, pn, flavor);
 
                     if (smd.isLambda())
                     {
@@ -159,12 +191,12 @@ implements AnnotationVisitor,
                     // The relevant data for this kind is in d1. It is a list of Strings
                     // representing the part class names.
                     clazz.accept(new SimpleKotlinMetadataSetter(
-                        new KotlinMultiFileFacadeKindMetadata(mv, bv, d1, xi, xs, pn)));
+                        new KotlinMultiFileFacadeKindMetadata(mv, d1, xi, xs, pn)));
                     break;
 
                 case METADATA_KIND_MULTI_FILE_CLASS_PART:
                     KotlinMultiFilePartKindMetadata kotlinMultiFilePartKindMetadata =
-                        new KotlinMultiFilePartKindMetadata(mv, bv, xi, xs, pn);
+                        new KotlinMultiFilePartKindMetadata(mv, xi, xs, pn);
 
                     ((KotlinClassMetadata.MultiFileClassPart)md).accept(new PackageReader(
                         kotlinMultiFilePartKindMetadata));
@@ -175,19 +207,19 @@ implements AnnotationVisitor,
 
                 default:
                     // This happens when the library is outdated and a newer type of Kotlin class is passed.
-                    warningPrinter.print(clazz.getName(),
-                                         "Unknown Kotlin class kind in class " +
-                                         clazz.getName() +
-                                         ". The metadata for this class will not be processed.");
+                    this.errorHandler.accept(clazz,
+                                             "Unknown Kotlin class kind in class " +
+                                             clazz.getName() +
+                                             ". The metadata for this class will not be processed.");
                     break;
             }
         }
         catch (InconsistentKotlinMetadataException e)
         {
-            warningPrinter.print(clazz.getName(),
-                                 "Encountered corrupt Kotlin metadata in class " +
-                                 clazz.getName() +
-                                 ". The metadata for this class will not be processed (" + e.getMessage() + ")");
+            this.errorHandler.accept(clazz,
+                                     "Encountered corrupt Kotlin metadata in class " +
+                                     clazz.getName() +
+                                     ". The metadata for this class will not be processed (" + e.getMessage() + ")");
 
         }
     }
@@ -208,7 +240,6 @@ implements AnnotationVisitor,
         switch (arrayElementType)
         {
             case mv: this.mv = new int   [arrayElementValue.u2elementValuesCount]; break;
-            case bv: this.bv = new int   [arrayElementValue.u2elementValuesCount]; break;
             case d1: this.d1 = new String[arrayElementValue.u2elementValuesCount]; break;
             case d2: this.d2 = new String[arrayElementValue.u2elementValuesCount]; break;
         }
@@ -306,7 +337,7 @@ implements AnnotationVisitor,
             }
             else if (this.arrayType == MetadataType.bv)
             {
-                bv[index++] = integerConstant.getValue();
+                // Deprecated & removed from kotlinx.metadata library, do nothing.
             }
             else
             {
@@ -318,7 +349,9 @@ implements AnnotationVisitor,
 
     public enum MetadataType
     {
-        k, mv, bv, d1, d2, xi, xs, pn
+        k, mv, d1, d2, xi, xs, pn,
+
+        @Deprecated bv // was removed but older metadata will still contain it.
     }
 
 
@@ -462,7 +495,7 @@ implements AnnotationVisitor,
         public KmTypeParameterVisitor visitTypeParameter(int flags, String parameterName, int id, KmVariance variance)
         {
             KotlinTypeParameterMetadata kotlinTypeParameterMetadata =
-                    new KotlinTypeParameterMetadata(convertTypeParameterFlags(flags), parameterName, id, variance);
+                new KotlinTypeParameterMetadata(convertTypeParameterFlags(flags), parameterName, id, fromKmVariance(variance));
             typeParameters.add(kotlinTypeParameterMetadata);
 
             return new TypeParameterReader(kotlinTypeParameterMetadata);
@@ -536,6 +569,22 @@ implements AnnotationVisitor,
         }
 
 
+        @Override
+        public void visitInlineClassUnderlyingPropertyName(String name)
+        {
+            kotlinClassKindMetadata.underlyingPropertyName = name;
+        }
+
+
+        @Override
+        public KmTypeVisitor visitInlineClassUnderlyingType(int flags)
+        {
+            KotlinTypeMetadata type = new KotlinTypeMetadata(convertTypeFlags(flags));
+            kotlinClassKindMetadata.underlyingPropertyType = type;
+            return new TypeReader(type);
+        }
+
+
         private class ClassExtensionReader
         extends JvmClassExtensionVisitor
         {
@@ -587,6 +636,8 @@ implements AnnotationVisitor,
             flags.isExternal        = Flag.Class.IS_EXTERNAL.invoke(kotlinFlags);
             flags.isExpect          = Flag.Class.IS_EXPECT.invoke(kotlinFlags);
             flags.isInline          = Flag.Class.IS_INLINE.invoke(kotlinFlags);
+            flags.isValue           = Flag.Class.IS_VALUE.invoke(kotlinFlags);
+            flags.isFun             = Flag.Class.IS_FUN.invoke(kotlinFlags);
 
             return flags;
         }
@@ -601,9 +652,21 @@ implements AnnotationVisitor,
 
             flags.isPrimary = Flag.Constructor.IS_PRIMARY.invoke(kotlinFlags);
 
+            // When reading older metadata where the isSecondary flag was not yet introduced,
+            // we initialize isSecondary based on isPrimary.
+            if (this.kotlinClassKindMetadata.mv[0] == 1 && this.kotlinClassKindMetadata.mv[1] == 1)
+            {
+                flags.isSecondary = !flags.isPrimary;
+            }
+            else
+            {
+                flags.isSecondary = Flag.Constructor.IS_SECONDARY.invoke(kotlinFlags);
+            }
+
+            flags.hasNonStableParameterNames = Flag.Constructor.HAS_NON_STABLE_PARAMETER_NAMES.invoke(kotlinFlags);
+
             return flags;
         }
-
     }
 
 
@@ -772,7 +835,7 @@ implements AnnotationVisitor,
         public KmTypeParameterVisitor visitTypeParameter(int flags, String name, int id, KmVariance variance)
         {
             KotlinTypeParameterMetadata kotlinTypeParameterMetadata =
-                    new KotlinTypeParameterMetadata(convertTypeParameterFlags(flags), name, id, variance);
+                new KotlinTypeParameterMetadata(convertTypeParameterFlags(flags), name, id, fromKmVariance(variance));
             typeParameters.add(kotlinTypeParameterMetadata);
 
             return new TypeParameterReader(kotlinTypeParameterMetadata);
@@ -841,7 +904,7 @@ implements AnnotationVisitor,
     {
         private final KotlinTypeAliasMetadata kotlinTypeAliasMetadata;
 
-        private final ArrayList<KotlinMetadataAnnotation>    annotations;
+        private final ArrayList<KotlinAnnotation>            annotations;
         private final ArrayList<KotlinTypeParameterMetadata> typeParameters;
 
         TypeAliasReader(KotlinTypeAliasMetadata kotlinTypeAliasMetadata)
@@ -855,7 +918,7 @@ implements AnnotationVisitor,
         @Override
         public void visitAnnotation(KmAnnotation annotation)
         {
-            annotations.add(new KotlinMetadataAnnotation(annotation));
+            annotations.add(convertAnnotation(annotation));
         }
 
         /**
@@ -867,7 +930,7 @@ implements AnnotationVisitor,
         public KmTypeParameterVisitor visitTypeParameter(int flags, String name, int id, KmVariance variance)
         {
             KotlinTypeParameterMetadata kotlinTypeParameterMetadata =
-                    new KotlinTypeParameterMetadata(convertTypeParameterFlags(flags), name, id, variance);
+                new KotlinTypeParameterMetadata(convertTypeParameterFlags(flags), name, id, fromKmVariance(variance));
             typeParameters.add(kotlinTypeParameterMetadata);
 
             return new TypeParameterReader(kotlinTypeParameterMetadata);
@@ -1054,7 +1117,7 @@ implements AnnotationVisitor,
         public KmTypeParameterVisitor visitTypeParameter(int flags, String name, int id, KmVariance variance)
         {
             KotlinTypeParameterMetadata kotlinTypeParameterMetadata =
-                    new KotlinTypeParameterMetadata(convertTypeParameterFlags(flags), name, id, variance);
+                new KotlinTypeParameterMetadata(convertTypeParameterFlags(flags), name, id, fromKmVariance(variance));
             typeParameters.add(kotlinTypeParameterMetadata);
 
             return new TypeParameterReader(kotlinTypeParameterMetadata);
@@ -1143,7 +1206,9 @@ implements AnnotationVisitor,
         @Override
         public KmEffectVisitor visitEffect(KmEffectType effectType, KmEffectInvocationKind invocationKind)
         {
-            KotlinEffectMetadata effect = new KotlinEffectMetadata(effectType, invocationKind);
+            KotlinEffectMetadata effect = new KotlinEffectMetadata(
+                fromKmEffectType(effectType),
+                fromKmEffectInvocationKind(invocationKind));
             effects.add(effect);
 
             return new EffectReader(effect);
@@ -1337,9 +1402,9 @@ implements AnnotationVisitor,
     {
         private KotlinTypeMetadata kotlinTypeMetadata;
 
-        private final ArrayList<KotlinTypeMetadata>       typeArguments;
-        private final ArrayList<KotlinTypeMetadata>       upperBounds;
-        private final ArrayList<KotlinMetadataAnnotation> annotations;
+        private final ArrayList<KotlinTypeMetadata> typeArguments;
+        private final ArrayList<KotlinTypeMetadata> upperBounds;
+        private final ArrayList<KotlinAnnotation>   annotations;
 
         TypeReader(KotlinTypeMetadata kotlinTypeMetadata)
         {
@@ -1436,7 +1501,7 @@ implements AnnotationVisitor,
         @Override
         public KmTypeVisitor visitArgument(int flags, KmVariance variance)
         {
-            KotlinTypeMetadata typeArgument = new KotlinTypeMetadata(convertTypeFlags(flags), variance);
+            KotlinTypeMetadata typeArgument = new KotlinTypeMetadata(convertTypeFlags(flags), fromKmVariance(variance));
             typeArguments.add(typeArgument);
 
             return new TypeReader(typeArgument);
@@ -1503,7 +1568,7 @@ implements AnnotationVisitor,
             public void visitAnnotation(KmAnnotation annotation)
             {
                 // e.g. @ParameterName("prefix") [map, throw away if shrunk], @UnsafeVariance [throw away?]
-                annotations.add(new KotlinMetadataAnnotation(annotation));
+                annotations.add(convertAnnotation(annotation));
             }
 
             @Override
@@ -1548,12 +1613,12 @@ implements AnnotationVisitor,
         private class TypeParameterExtensionReader
         extends JvmTypeParameterExtensionVisitor
         {
-            private final ArrayList<KotlinMetadataAnnotation> annotations = new ArrayList<>(1);
+            private final ArrayList<KotlinAnnotation> annotations = new ArrayList<>(1);
 
             @Override
             public void visitAnnotation(KmAnnotation annotation)
             {
-                annotations.add(new KotlinMetadataAnnotation(annotation));
+                annotations.add(convertAnnotation(annotation));
             }
 
             @Override
@@ -1588,8 +1653,8 @@ implements AnnotationVisitor,
         @Override
         public void visit(KmVersionRequirementVersionKind kind, KmVersionRequirementLevel level, Integer errorCode, String message)
         {
-            kotlinVersionRequirementMetadata.kind      = kind;
-            kotlinVersionRequirementMetadata.level     = level;
+            kotlinVersionRequirementMetadata.kind      = fromKmVersionRequirementVersionKind(kind);
+            kotlinVersionRequirementMetadata.level     = fromKmVersionRequirementLevel(level);
             kotlinVersionRequirementMetadata.errorCode = errorCode;
             kotlinVersionRequirementMetadata.message   = message;
         }
@@ -1616,25 +1681,94 @@ implements AnnotationVisitor,
     }
 
 
-    private static proguard.classfile.kotlin.JvmMethodSignature fromKotlinJvmMethodSignature(kotlinx.metadata.jvm.JvmMethodSignature jvmMethodSignature)
+    private static MethodSignature fromKotlinJvmMethodSignature(JvmMethodSignature jvmMethodSignature)
     {
         if (jvmMethodSignature == null)
         {
             return null;
         }
 
-        return new proguard.classfile.kotlin.JvmMethodSignature(jvmMethodSignature.getName(), jvmMethodSignature.getDesc());
+        try
+        {
+            return new MethodSignature(null, jvmMethodSignature.getName(), jvmMethodSignature.getDesc());
+        }
+        catch (Exception e)
+        {
+            return null;
+        }
     }
 
 
-    private static proguard.classfile.kotlin.JvmFieldSignature fromKotlinJvmFieldSignature(kotlinx.metadata.jvm.JvmFieldSignature jvmFieldSignature)
+    private static FieldSignature fromKotlinJvmFieldSignature(JvmFieldSignature jvmFieldSignature)
     {
         if (jvmFieldSignature == null)
         {
             return null;
         }
 
-        return new proguard.classfile.kotlin.JvmFieldSignature(jvmFieldSignature.getName(), jvmFieldSignature.getDesc());
+        return new FieldSignature(null, jvmFieldSignature.getName(), jvmFieldSignature.getDesc());
+    }
+
+
+    private static KotlinTypeVariance fromKmVariance(KmVariance variance)
+    {
+        switch(variance)
+        {
+            case IN:        return KotlinTypeVariance.IN;
+            case INVARIANT: return KotlinTypeVariance.INVARIANT;
+            case OUT:       return KotlinTypeVariance.OUT;
+            default:        throw new UnsupportedOperationException("Encountered unknown enum value for KmVariance.");
+        }
+    }
+
+
+    private static KotlinVersionRequirementVersionKind fromKmVersionRequirementVersionKind(KmVersionRequirementVersionKind kotlinVersionRequirementVersionKind)
+    {
+        switch(kotlinVersionRequirementVersionKind)
+        {
+            case API_VERSION:      return KotlinVersionRequirementVersionKind.API_VERSION;
+            case COMPILER_VERSION: return KotlinVersionRequirementVersionKind.COMPILER_VERSION;
+            case LANGUAGE_VERSION: return KotlinVersionRequirementVersionKind.LANGUAGE_VERSION;
+            default: throw new UnsupportedOperationException("Encountered unknown enum value for KmVersionRequirementVersionKind.");
+        }
+    }
+
+    private static KotlinVersionRequirementLevel fromKmVersionRequirementLevel(KmVersionRequirementLevel kmVersionRequirementLevel)
+    {
+        switch(kmVersionRequirementLevel)
+        {
+            case ERROR:     return KotlinVersionRequirementLevel.ERROR;
+            case HIDDEN:    return KotlinVersionRequirementLevel.HIDDEN;
+            case WARNING:   return KotlinVersionRequirementLevel.WARNING;
+            default: throw new UnsupportedOperationException("Encountered unknown enum value for KmVersionRequirementLevel.");
+        }
+    }
+
+
+    private static KotlinEffectType fromKmEffectType(KmEffectType effectType)
+    {
+        switch(effectType)
+        {
+            case CALLS:             return KotlinEffectType.CALLS;
+            case RETURNS_CONSTANT:  return KotlinEffectType.RETURNS_CONSTANT;
+            case RETURNS_NOT_NULL:  return KotlinEffectType.RETURNS_NOT_NULL;
+            default: throw new UnsupportedOperationException("Encountered unknown enum value for KmEffectType.");
+        }
+    }
+
+    private static KotlinEffectInvocationKind fromKmEffectInvocationKind(KmEffectInvocationKind invocationKind)
+    {
+        if (invocationKind == null)
+        {
+            return null;
+        }
+        switch(invocationKind)
+        {
+            case AT_MOST_ONCE:  return KotlinEffectInvocationKind.AT_MOST_ONCE;
+            case EXACTLY_ONCE:  return KotlinEffectInvocationKind.EXACTLY_ONCE;
+            case AT_LEAST_ONCE: return KotlinEffectInvocationKind.AT_LEAST_ONCE;
+            default: throw new UnsupportedOperationException("Encountered unknown enum value for KmEffectInvocationKind.");
+        }
     }
 
 
@@ -1805,5 +1939,11 @@ implements AnnotationVisitor,
         flags.isNegated            = Flag.EffectExpression.IS_NEGATED.invoke(kotlinFlags);
 
         return flags;
+    }
+
+
+    public static boolean isSupportedMetadataVersion(KotlinMetadataVersion mv)
+    {
+        return new JvmMetadataVersion(mv.major, mv.minor, mv.patch).isCompatible();
     }
 }

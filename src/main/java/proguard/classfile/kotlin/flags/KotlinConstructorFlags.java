@@ -29,7 +29,7 @@ package proguard.classfile.kotlin.flags;
  *   - isPrivateToThis
  *   - isLocal
  */
-public class KotlinConstructorFlags extends KotlinFlags
+public class KotlinConstructorFlags implements KotlinFlags
 {
 
     public final KotlinCommonFlags     common;
@@ -37,8 +37,23 @@ public class KotlinConstructorFlags extends KotlinFlags
 
     /**
      * Signifies that the corresponding constructor is the primary constructor.
+     * @deprecated Use {@link #isSecondary} instead.
      */
+    @Deprecated
     public boolean isPrimary;
+
+    /**
+     * Signifies that the corresponding constructor is secondary,
+     * i.e. declared not in the class header, but in the class body.
+     */
+    public boolean isSecondary;
+
+
+    /**
+     * Signifies that the corresponding constructor has non-stable parameter names,
+     * i.e. cannot be called with named arguments.
+     */
+    public boolean hasNonStableParameterNames;
 
     public KotlinConstructorFlags(KotlinCommonFlags common, KotlinVisibilityFlags visibility)
     {

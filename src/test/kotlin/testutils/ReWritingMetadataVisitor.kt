@@ -19,20 +19,13 @@
 package testutils
 
 import proguard.classfile.Clazz
-import proguard.classfile.attribute.annotation.visitor.AllAnnotationVisitor
-import proguard.classfile.attribute.annotation.visitor.AnnotationTypeFilter
-import proguard.classfile.attribute.visitor.AllAttributeVisitor
 import proguard.classfile.io.kotlin.KotlinMetadataWriter
-import proguard.classfile.kotlin.KotlinConstants
 import proguard.classfile.kotlin.visitor.KotlinMetadataVisitor
 import proguard.classfile.kotlin.visitor.MultiKotlinMetadataVisitor
 import proguard.classfile.kotlin.visitor.ReferencedKotlinMetadataVisitor
-import proguard.classfile.util.WarningPrinter
 import proguard.classfile.util.kotlin.KotlinMetadataInitializer
 import proguard.classfile.visitor.ClassVisitor
 import proguard.classfile.visitor.MultiClassVisitor
-import java.io.OutputStream
-import java.io.PrintWriter
 
 /**
  * This {@link ClassVisitor} delegates to the given {@link KotlinMetadataVistor}s but only after, for each class:
@@ -43,28 +36,12 @@ import java.io.PrintWriter
  * This therefore, ensures that the Kotlin metadata goes through the complete initialize -> write -> initialize cycle.
  */
 class ReWritingMetadataVisitor(private vararg val visitors: KotlinMetadataVisitor) : ClassVisitor {
-    private val warningPrinter = WarningPrinter(
-        PrintWriter(object : OutputStream() {
-            // TODO: when switching to Java 11, we can use `OutputStream.nullOutputStream()`
-            override fun write(b: Int) { }
-        })
-    )
-
     override fun visitAnyClass(clazz: Clazz?) {
 
         clazz?.accept(
             MultiClassVisitor(
-                ReferencedKotlinMetadataVisitor(
-                    KotlinMetadataWriter(warningPrinter)
-                ),
-                AllAttributeVisitor(
-                    AllAnnotationVisitor(
-                        AnnotationTypeFilter(
-                            KotlinConstants.TYPE_KOTLIN_METADATA,
-                            KotlinMetadataInitializer(warningPrinter)
-                        )
-                    )
-                ),
+                KotlinMetadataWriter { _, message -> println(message) },
+                KotlinMetadataInitializer { _, message -> println(message) },
                 ReferencedKotlinMetadataVisitor(
                     MultiKotlinMetadataVisitor(*visitors)
                 )

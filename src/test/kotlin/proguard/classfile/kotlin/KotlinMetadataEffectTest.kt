@@ -22,12 +22,12 @@ import io.kotest.core.spec.style.FreeSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.spyk
 import io.mockk.verify
-import kotlinx.metadata.KmEffectInvocationKind.AT_LEAST_ONCE
-import kotlinx.metadata.KmEffectInvocationKind.AT_MOST_ONCE
-import kotlinx.metadata.KmEffectInvocationKind.EXACTLY_ONCE
-import kotlinx.metadata.KmEffectType.CALLS
-import kotlinx.metadata.KmEffectType.RETURNS_CONSTANT
-import proguard.classfile.kotlin.visitor.AllFunctionsVisitor
+import proguard.classfile.kotlin.KotlinEffectInvocationKind.AT_LEAST_ONCE
+import proguard.classfile.kotlin.KotlinEffectInvocationKind.AT_MOST_ONCE
+import proguard.classfile.kotlin.KotlinEffectInvocationKind.EXACTLY_ONCE
+import proguard.classfile.kotlin.KotlinEffectType.CALLS
+import proguard.classfile.kotlin.KotlinEffectType.RETURNS_CONSTANT
+import proguard.classfile.kotlin.visitor.AllFunctionVisitor
 import proguard.classfile.kotlin.visitor.KotlinEffectVisitor
 import proguard.classfile.kotlin.visitor.ReferencedKotlinMetadataVisitor
 import proguard.classfile.kotlin.visitor.filter.KotlinFunctionFilter
@@ -97,7 +97,7 @@ class KotlinMetadataEffectTest : FreeSpec({
     fun visitFunctionEffectMetadata(funcName: String, effectVisitor: KotlinEffectVisitor) {
         programClassPool.classesAccept(
             ReferencedKotlinMetadataVisitor(
-                AllFunctionsVisitor(
+                AllFunctionVisitor(
                     KotlinFunctionFilter(
                         { it.name == funcName },
                         { clazz, metadata, func ->

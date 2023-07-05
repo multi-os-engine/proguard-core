@@ -236,6 +236,8 @@ Some of the projects using ProGuardCORE:
 - [ProGuard](https://github.com/Guardsquare/proguard)
 - [Kotlin Metadata Printer](https://github.com/Guardsquare/kotlin-metadata-printer)
 - [ProGuard Assembler/Disassembler](https://github.com/Guardsquare/proguard-assembler)
+- [Log4Shell Detector](https://github.com/Guardsquare/log4shell-detector)
+- [klox compiler](https://github.com/mrjameshamilton/klox)
 
 If you've created your own, make sure to reach out through `github _ at _
 guardsquare.com` and we'll add it to the list!
@@ -248,5 +250,5 @@ guide](blob/master/CONTRIBUTING.md) if you would like to contribute.
 
 ## 📝 License
 
-Copyright (c) 2002-2020 [Guardsquare NV](https://www.guardsquare.com/).
+Copyright (c) 2002-2022 [Guardsquare NV](https://www.guardsquare.com/).
 ProGuardCORE is released under the [Apache 2 license](LICENSE).

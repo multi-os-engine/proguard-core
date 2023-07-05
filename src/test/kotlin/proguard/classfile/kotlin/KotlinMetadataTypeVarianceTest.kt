@@ -22,9 +22,9 @@ import io.kotest.core.spec.style.FreeSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.spyk
 import io.mockk.verify
-import kotlinx.metadata.KmVariance.IN
-import kotlinx.metadata.KmVariance.INVARIANT
-import kotlinx.metadata.KmVariance.OUT
+import proguard.classfile.kotlin.KotlinTypeVariance.IN
+import proguard.classfile.kotlin.KotlinTypeVariance.INVARIANT
+import proguard.classfile.kotlin.KotlinTypeVariance.OUT
 import proguard.classfile.kotlin.visitor.AllTypeParameterVisitor
 import proguard.classfile.kotlin.visitor.KotlinTypeParameterVisitor
 import proguard.classfile.kotlin.visitor.ReferencedKotlinMetadataVisitor

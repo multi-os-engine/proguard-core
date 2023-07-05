@@ -1,7 +1,7 @@
 /*
  * ProGuardCORE -- library to process Java bytecode.
  *
- * Copyright (c) 2002-2020 Guardsquare NV
+ * Copyright (c) 2002-2021 Guardsquare NV
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,33 +15,33 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package proguard.classfile.kotlin.visitor;
 
 import proguard.classfile.Clazz;
 import proguard.classfile.kotlin.*;
 
 /**
- * This KotlinMetadataVisitor lets a given KotlinConstructorVisitor visit all constructors of visited KotlinMetadata.
+ * This visitor allows a delegate to visit all arguments of a {@link KotlinAnnotation}.
+ *
+ * @author James Hamilton
  */
-public class   AllConstructorsVisitor
-    implements KotlinMetadataVisitor
+public class AllKotlinAnnotationArgumentVisitor implements KotlinAnnotationVisitor
 {
-    private final KotlinConstructorVisitor delegateConstructorVisitor;
+    private final KotlinAnnotationArgumentVisitor delegate;
 
 
-    public AllConstructorsVisitor(KotlinConstructorVisitor delegateConstructorVisitor)
+    public AllKotlinAnnotationArgumentVisitor(KotlinAnnotationArgumentVisitor delegate)
     {
-        this.delegateConstructorVisitor = delegateConstructorVisitor;
+        this.delegate = delegate;
     }
 
 
-    public void visitAnyKotlinMetadata(Clazz clazz, KotlinMetadata kotlinMetadata)
+    @Override
+    public void visitAnyAnnotation(Clazz             clazz,
+                                   KotlinAnnotatable annotatable,
+                                   KotlinAnnotation  annotation)
     {
-    }
-
-
-    public void visitKotlinClassMetadata(Clazz clazz, KotlinClassKindMetadata kotlinClassKindMetadata)
-    {
-        kotlinClassKindMetadata.constructorsAccept(clazz, delegateConstructorVisitor);
+        annotation.argumentsAccept(clazz, annotatable, this.delegate);
     }
 }

@@ -18,12 +18,16 @@
 
 package proguard.classfile.kotlin.reflect.util
 
+import io.kotest.assertions.throwables.shouldNotThrowAny
 import io.kotest.core.spec.style.FreeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.mockk.spyk
 import io.mockk.verify
 import proguard.classfile.Clazz
+import proguard.classfile.constant.Constant
+import proguard.classfile.constant.Utf8Constant
+import proguard.classfile.constant.visitor.ConstantVisitor
 import proguard.classfile.kotlin.KotlinClassKindMetadata
 import proguard.classfile.kotlin.KotlinFileFacadeKindMetadata
 import proguard.classfile.kotlin.KotlinMetadata
@@ -31,6 +35,7 @@ import proguard.classfile.kotlin.KotlinSyntheticClassKindMetadata
 import proguard.classfile.kotlin.reflect.visitor.CallableReferenceInfoVisitor
 import proguard.classfile.kotlin.visitor.KotlinMetadataVisitor
 import proguard.classfile.kotlin.visitor.ReferencedKotlinMetadataVisitor
+import proguard.classfile.util.ClassReferenceInitializer
 import testutils.ClassPoolBuilder
 import testutils.JavaSource
 import testutils.KotlinSource
@@ -73,6 +78,35 @@ class KotlinCallableReferenceInitializerTest : FreeSpec({
                     programClassPool.getClass("TestKt"),
                     ofType(KotlinFileFacadeKindMetadata::class)
                 )
+            }
+        }
+    }
+
+    "Given a function callable reference with an empty descriptor" - {
+        val (programClassPool, _) = ClassPoolBuilder.fromSource(
+            KotlinSource(
+                "Test.kt",
+                """
+                fun foo() = "bar"
+                fun ref() = ::foo
+                """.trimIndent()
+            ),
+            initialize = false
+        )
+
+        programClassPool.getClass("TestKt\$ref\$1")!!.constantPoolEntriesAccept(object : ConstantVisitor {
+            override fun visitAnyConstant(clazz: Clazz?, constant: Constant?) {}
+
+            override fun visitUtf8Constant(clazz: Clazz?, utf8Constant: Utf8Constant?) {
+                if (utf8Constant?.string == "foo()Ljava/lang/String;") {
+                    utf8Constant.string = ""
+                }
+            }
+        })
+
+        "This should not crash the initializer" {
+            shouldNotThrowAny {
+                ClassPoolBuilder.initialize(programClassPool, true)
             }
         }
     }
@@ -363,16 +397,13 @@ class KotlinCallableReferenceInitializerTest : FreeSpec({
         }
     }
 
-    "Given a private member anonymous function callable reference" - {
-        val (programClassPool, _) = ClassPoolBuilder.fromSource(
+    "Given a function callable reference with an uninitialized owner class" - {
+        val (programClassPool, libraryClassPool) = ClassPoolBuilder.fromSource(
             KotlinSource(
                 "Test.kt",
                 """
-                    class Foo {
-                        private fun foo() = "OK"
-
-                        fun ref() = (Foo::foo)(this)
-                    }
+                fun foo() = "bar"
+                fun ref() = ::foo
                 """.trimIndent()
             )
         )
@@ -381,24 +412,34 @@ class KotlinCallableReferenceInitializerTest : FreeSpec({
         val ownerVisitor = spyk< KotlinMetadataVisitor>()
         val testVisitor = createVisitor(callableRefInfoVisitor, ownerVisitor)
 
-        programClassPool.classesAccept("Foo\$ref\$1", testVisitor)
+        // Remove the owner class from the classpool, to simulate a case
+        // where the owner class was not found.
+        programClassPool.removeClass("TestKt")
+        // Clear the current callableReferenceInfo
+        programClassPool.classesAccept(
+            "TestKt\$ref\$1",
+            ReferencedKotlinMetadataVisitor(
+                object : KotlinMetadataVisitor {
+                    override fun visitAnyKotlinMetadata(clazz: Clazz, kotlinMetadata: KotlinMetadata) {}
 
-        "Then the callableReferenceInfo should be initialized" {
-            verify(exactly = 1) {
-                callableRefInfoVisitor.visitFunctionReferenceInfo(
-                    withArg {
-                        it.name shouldBe "foo"
-                        it.signature shouldBe "foo()Ljava/lang/String;"
-                        it.owner shouldNotBe null
+                    override fun visitKotlinSyntheticClassMetadata(clazz: Clazz, kotlinSyntheticClassKindMetadata: KotlinSyntheticClassKindMetadata) {
+                        kotlinSyntheticClassKindMetadata.callableReferenceInfo = null
                     }
-                )
-            }
+                }
+            )
+        )
 
-            verify(exactly = 1) {
-                ownerVisitor.visitKotlinClassMetadata(
-                    programClassPool.getClass("Foo"),
-                    ofType(KotlinClassKindMetadata::class)
-                )
+        "Then the initializer should not throw an exception" {
+            shouldNotThrowAny {
+                programClassPool.classesAccept(ClassReferenceInitializer(programClassPool, libraryClassPool))
+            }
+        }
+
+        programClassPool.classesAccept("TestKt\$ref\$1", testVisitor)
+
+        "Then the callableReferenceInfo should not be initialized" {
+            verify(exactly = 0) {
+                callableRefInfoVisitor.visitAnyCallableReferenceInfo(any())
             }
         }
     }

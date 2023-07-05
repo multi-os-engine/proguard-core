@@ -8,18 +8,13 @@
 package testutils
 
 import com.tschuchort.compiletesting.KotlinCompilation
+import io.kotest.assertions.fail
 import io.kotest.core.listeners.TestListener
 import io.kotest.core.spec.AutoScan
 import io.kotest.core.test.TestCase
 import proguard.JbcReader
 import proguard.classfile.ClassPool
 import proguard.classfile.Clazz
-import proguard.classfile.attribute.Attribute.RUNTIME_VISIBLE_ANNOTATIONS
-import proguard.classfile.attribute.annotation.visitor.AllAnnotationVisitor
-import proguard.classfile.attribute.annotation.visitor.AnnotationTypeFilter
-import proguard.classfile.attribute.visitor.AllAttributeVisitor
-import proguard.classfile.attribute.visitor.AttributeNameFilter
-import proguard.classfile.kotlin.KotlinConstants.TYPE_KOTLIN_METADATA
 import proguard.classfile.util.ClassReferenceInitializer
 import proguard.classfile.util.ClassSubHierarchyInitializer
 import proguard.classfile.util.ClassSuperHierarchyInitializer
@@ -35,13 +30,13 @@ import proguard.io.NameFilteredDataEntryReader
 import proguard.io.StreamingDataEntry
 import java.io.ByteArrayInputStream
 import java.io.File
-import java.io.OutputStream
 import java.io.PrintWriter
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Files.createTempDirectory
 import java.util.Objects
 import kotlin.reflect.KProperty
+import kotlin.streams.toList
 
 data class ClassPools(val programClassPool: ClassPool, val libraryClassPool: ClassPool)
 
@@ -57,13 +52,23 @@ class ClassPoolBuilder private constructor() {
             }
         }
 
-        @Suppress("UNCHECKED_CAST")
-        fun fromDirectory(dir: File): ClassPools =
+        fun fromDirectory(
+            dir: File,
+            javacArguments: List<String> = emptyList(),
+            kotlincArguments: List<String> = emptyList(),
+            jdkHome: File = getCurrentJavaHome(),
+            initialize: Boolean = true
+        ): ClassPools =
             fromSource(
                 *Files.walk(dir.toPath())
                     .filter { it.isJavaFile() || it.isKotlinFile() }
                     .map { TestSource.fromFile(it.toFile()) }
-                    .toArray() as Array<out TestSource>
+                    .toList()
+                    .toTypedArray(),
+                javacArguments = javacArguments,
+                kotlincArguments = kotlincArguments,
+                jdkHome = jdkHome,
+                initialize = initialize
             )
 
         fun fromFiles(vararg file: File): ClassPools =
@@ -73,7 +78,8 @@ class ClassPoolBuilder private constructor() {
             vararg source: TestSource,
             javacArguments: List<String> = emptyList(),
             kotlincArguments: List<String> = emptyList(),
-            jdkHome: File = getCurrentJavaHome()
+            jdkHome: File = getCurrentJavaHome(),
+            initialize: Boolean = true
         ): ClassPools {
 
             compiler.apply {
@@ -87,6 +93,10 @@ class ClassPoolBuilder private constructor() {
             }
 
             val result = compiler.compile()
+
+            if (result.exitCode != KotlinCompilation.ExitCode.OK) {
+                fail("Compilation error: ${result.messages}")
+            }
 
             val programClassPool = ClassPool()
 
@@ -111,49 +121,41 @@ class ClassPoolBuilder private constructor() {
                 classReader.read(StreamingDataEntry(it.filename, it.getInputStream()))
             }
 
-            val classReferenceInitializer = ClassReferenceInitializer(programClassPool, libraryClassPool)
-            val classSuperHierarchyInitializer = ClassSuperHierarchyInitializer(programClassPool, libraryClassPool)
+            if (initialize) {
+                initialize(programClassPool, source.any { it is KotlinSource })
+            }
+
+            compiler.workingDir.deleteRecursively()
+
+            return ClassPools(programClassPool, libraryClassPool)
+        }
+
+        fun initialize(programClassPool: ClassPool, containsKotlinCode: Boolean) {
+            val classReferenceInitializer =
+                ClassReferenceInitializer(programClassPool, libraryClassPool)
+            val classSuperHierarchyInitializer =
+                ClassSuperHierarchyInitializer(programClassPool, libraryClassPool)
             val classSubHierarchyInitializer = ClassSubHierarchyInitializer()
 
             programClassPool.classesAccept(classSuperHierarchyInitializer)
             libraryClassPool.classesAccept(classSuperHierarchyInitializer)
 
-            if (source.count { it is KotlinSource } > 0) initializeKotlinMetadata(programClassPool)
+            if (containsKotlinCode)
+                programClassPool.classesAccept(
+                    KotlinMetadataInitializer { _, message ->
+                        println(
+                            message
+                        )
+                    }
+                )
 
             programClassPool.classesAccept(classReferenceInitializer)
             libraryClassPool.classesAccept(classReferenceInitializer)
 
             programClassPool.accept(classSubHierarchyInitializer)
             libraryClassPool.accept(classSubHierarchyInitializer)
-
-            compiler.workingDir.deleteRecursively()
-
-            return ClassPools(programClassPool, libraryClassPool)
         }
     }
-}
-
-private fun initializeKotlinMetadata(classPool: ClassPool) {
-    val kotlinMetadataInitializer =
-        AllAttributeVisitor(
-            AttributeNameFilter(
-                RUNTIME_VISIBLE_ANNOTATIONS,
-                AllAnnotationVisitor(
-                    AnnotationTypeFilter(
-                        TYPE_KOTLIN_METADATA,
-                        KotlinMetadataInitializer(
-                            WarningPrinter(
-                                PrintWriter(object : OutputStream() {
-                                    override fun write(b: Int) { }
-                                })
-                            )
-                        )
-                    )
-                )
-            )
-        )
-
-    classPool.classesAccept(kotlinMetadataInitializer)
 }
 
 private fun AssemblerSource.getInputStream() =

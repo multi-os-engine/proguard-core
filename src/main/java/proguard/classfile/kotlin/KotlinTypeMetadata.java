@@ -1,7 +1,7 @@
 /*
  * ProGuardCORE -- library to process Java bytecode.
  *
- * Copyright (c) 2002-2021 Guardsquare NV
+ * Copyright (c) 2002-2022 Guardsquare NV
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,20 +17,21 @@
  */
 package proguard.classfile.kotlin;
 
-import kotlinx.metadata.*;
 import proguard.classfile.Clazz;
 import proguard.classfile.kotlin.flags.KotlinCommonFlags;
 import proguard.classfile.kotlin.flags.KotlinTypeFlags;
 import proguard.classfile.kotlin.visitor.*;
+import proguard.classfile.visitor.ClassVisitor;
 import proguard.util.*;
 
 import java.util.*;
 
 public class KotlinTypeMetadata
 extends      SimpleProcessable
-implements   Processable
+implements   Processable,
+             KotlinAnnotatable
 {
-    public KmVariance variance;
+    public KotlinTypeVariance variance;
 
     public List<KotlinTypeMetadata> typeArguments;
 
@@ -63,7 +64,7 @@ implements   Processable
 
     public boolean isRaw = false;
 
-    public List<KotlinMetadataAnnotation> annotations;
+    public List<KotlinAnnotation> annotations;
 
     public KotlinTypeFlags flags;
 
@@ -74,7 +75,7 @@ implements   Processable
     }
 
 
-    public KotlinTypeMetadata(KotlinTypeFlags flags, KmVariance variance)
+    public KotlinTypeMetadata(KotlinTypeFlags flags, KotlinTypeVariance variance)
     {
         this.variance = variance;
         this.flags    = flags;
@@ -87,6 +88,16 @@ implements   Processable
     {
         kotlinTypeVisitor.visitSuperType(clazz, kotlinClassKindMetadata, this);
     }
+
+
+    public void underlyingPropertyTypeAccept(Clazz                   clazz,
+                                             KotlinClassKindMetadata kotlinClassKindMetadata,
+                                             KotlinTypeVisitor       kotlinTypeVisitor)
+    {
+        kotlinTypeVisitor.visitInlineClassUnderlyingPropertyType(clazz, kotlinClassKindMetadata, this);
+    }
+
+
 
 
     public void upperBoundsAccept(Clazz             clazz,
@@ -156,9 +167,17 @@ implements   Processable
     public void annotationsAccept(Clazz                   clazz,
                                   KotlinAnnotationVisitor kotlinAnnotationVisitor)
     {
-        for (KotlinMetadataAnnotation annotation : annotations)
+        for (KotlinAnnotation annotation : annotations)
         {
             kotlinAnnotationVisitor.visitTypeAnnotation(clazz, this, annotation);
+        }
+    }
+
+    public void referencedClassAccept(ClassVisitor classVisitor)
+    {
+        if (this.referencedClass != null)
+        {
+            this.referencedClass.accept(classVisitor);
         }
     }
 

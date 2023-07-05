@@ -17,7 +17,6 @@
  */
 package proguard.classfile.kotlin.visitor;
 
-import kotlinx.metadata.KmVariance;
 import proguard.classfile.*;
 import proguard.classfile.kotlin.*;
 import proguard.classfile.kotlin.flags.*;
@@ -118,8 +117,9 @@ implements KotlinMetadataVisitor,
         pw.println();
         indent();
 
-        kotlinClassKindMetadata.typeParametersAccept(clazz, this);
-        kotlinClassKindMetadata.superTypesAccept(    clazz, this);
+        kotlinClassKindMetadata.typeParametersAccept(                   clazz, this);
+        kotlinClassKindMetadata.superTypesAccept(                       clazz, this);
+        kotlinClassKindMetadata.inlineClassUnderlyingPropertyTypeAccept(clazz, this);
 
         printArray("Nested classnames",     kotlinClassKindMetadata.nestedClassNames,    kotlinClassKindMetadata.referencedNestedClasses);
         printArray("Enum entry names",      kotlinClassKindMetadata.enumEntryNames,      kotlinClassKindMetadata.referencedEnumEntries);
@@ -232,7 +232,7 @@ implements KotlinMetadataVisitor,
     {
         print("[TPRM] " + kotlinTypeParameterMetadata.id + ": ");
 
-        if (!KmVariance.INVARIANT.equals(kotlinTypeParameterMetadata.variance))
+        if (!KotlinTypeVariance.INVARIANT.equals(kotlinTypeParameterMetadata.variance))
         {
             pw.print(kotlinTypeParameterMetadata.variance + " ");
         }
@@ -480,6 +480,17 @@ implements KotlinMetadataVisitor,
     }
 
     @Override
+    public void visitInlineClassUnderlyingPropertyType(Clazz clazz,
+                                                       KotlinClassKindMetadata kotlinMetadata,
+                                                       KotlinTypeMetadata kotlinTypeMetadata)
+    {
+        print("[IUPT] ");
+        indent();
+        printKotlinTypeMetadata(clazz, kotlinTypeMetadata);
+        outdent();
+    }
+
+    @Override
     public void visitFunctionReturnType(Clazz clazz,
                                         KotlinMetadata kotlinMetadata,
                                         KotlinFunctionMetadata kotlinFunctionMetadata,
@@ -713,13 +724,13 @@ implements KotlinMetadataVisitor,
     // Implementations for KotlinAnnotationVisitor.
 
     @Override
-    public void visitAnyAnnotation(Clazz                    clazz,
-                                   KotlinMetadataAnnotation annotation)
+    public void visitAnyAnnotation(Clazz             clazz,
+                                   KotlinAnnotatable annotatable,
+                                   KotlinAnnotation  annotation)
     {
         println("[ANTN] " +
                 hasRefIndicator(annotation.referencedAnnotationClass) +
-                annotation.toString() +
-                (annotation.referencedArgumentMethods != null ? hasRefIndicator(annotation.referencedArgumentMethods.values()) : ""));
+                annotation);
     }
 
     // Implementations for KotlinContractVisitor.
@@ -861,7 +872,7 @@ implements KotlinMetadataVisitor,
         }
 
         if ( kotlinTypeMetadata.variance != null &&
-            !kotlinTypeMetadata.variance.equals(KmVariance.INVARIANT))
+            !kotlinTypeMetadata.variance.equals(KotlinTypeVariance.INVARIANT))
         {
             pw.print(kotlinTypeMetadata.variance + " ");
         }
@@ -993,39 +1004,37 @@ implements KotlinMetadataVisitor,
 
     // Field/method signature printing helpers.
 
-    private static String externalFieldDescription(JvmFieldSignature jvmFieldSignature)
+    private static String externalFieldDescription(FieldSignature jvmFieldSignature)
     {
         try
         {
             // If the types are invalid this will throw an exception.
-            return externalFullFieldDescription(0, jvmFieldSignature.getName(), jvmFieldSignature.getDesc());
+            return externalFullFieldDescription(0, jvmFieldSignature.memberName, jvmFieldSignature.descriptor);
         }
         catch (StringIndexOutOfBoundsException |
                IllegalArgumentException e)
         {
             // TODO(#1776): Specialize the caught Exception.
-            return "Invalid field descriptor: " + jvmFieldSignature.asString();
+            return "Invalid field descriptor: " + jvmFieldSignature;
         }
     }
 
-    private static String externalMethodDescription(JvmMethodSignature jvmMethodSignature)
+    private static String externalMethodDescription(MethodSignature jvmMethodSignature)
     {
         try
         {
             // If the types are invalid this will throw an exception.
-            return (ClassUtil.isInitializer(jvmMethodSignature.getName()) ?
+            return (ClassUtil.isInitializer(jvmMethodSignature.method) ?
                         "" :
-                        externalMethodReturnType(jvmMethodSignature.getDesc()) + ' ') +
-                   jvmMethodSignature.getName() +
-                   TypeConstants.METHOD_ARGUMENTS_OPEN +
-                   externalMethodArguments(jvmMethodSignature.getDesc()) +
-                   TypeConstants.METHOD_ARGUMENTS_CLOSE;
+                        jvmMethodSignature.descriptor.getPrettyReturnType() + ' ') +
+                   jvmMethodSignature.method +
+                   jvmMethodSignature.descriptor.getPrettyArgumentTypes();
         }
         catch (StringIndexOutOfBoundsException |
                IllegalArgumentException e)
         {
             // TODO(#1776): Specialize the caught Exception.
-            return "Invalid method descriptor: " + jvmMethodSignature.asString();
+            return "Invalid method descriptor: " + jvmMethodSignature;
         }
     }
 
@@ -1057,21 +1066,25 @@ implements KotlinMetadataVisitor,
            visibilityFlags(flags.visibility) + modalityFlags(flags.modality) +
            (flags.isAnnotationClass ? "annotation "       : "") +
            (flags.isUsualClass      ? "usual "            : "") +
-           (flags.isInterface       ? "interface "        : "") +
            (flags.isObject          ? "object "           : "") +
            (flags.isData            ? "data "             : "") +
            (flags.isInline          ? "inline "           : "") +
+           (flags.isValue           ? "value "            : "") +
            (flags.isInner           ? "inner "            : "") +
            (flags.isExpect          ? "expect "           : "") +
            (flags.isExternal        ? "external "         : "") +
            (flags.isCompanionObject ? "companion object " : "") +
            (flags.isEnumEntry       ? "enum entry "       : "") +
-           (flags.isEnumClass       ? "enum "             : "");
+           (flags.isEnumClass       ? "enum "             : "") +
+           (flags.isFun             ? "fun interface "    :
+                (flags.isInterface  ? "interface "        : ""));
     }
 
     private String constructorFlags(KotlinConstructorFlags flags)
     {
-        return visibilityFlags(flags.visibility) + (flags.isPrimary ? "primary " : "secondary ");
+        return visibilityFlags(flags.visibility) +
+               (flags.isPrimary                 ? "primary "   : "secondary ") +
+               (flags.hasNonStableParameterNames? "nonstable " : "stable ");
     }
 
     private String effectExpressionFlags(KotlinEffectExpressionFlags flags)

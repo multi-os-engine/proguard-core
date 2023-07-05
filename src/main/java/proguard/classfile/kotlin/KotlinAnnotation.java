@@ -17,28 +17,46 @@
  */
 package proguard.classfile.kotlin;
 
-import kotlinx.metadata.*;
 import proguard.classfile.*;
+import proguard.classfile.kotlin.visitor.KotlinAnnotationArgumentVisitor;
 import proguard.classfile.kotlin.visitor.KotlinAnnotationVisitor;
+import proguard.classfile.util.ClassUtil;
 import proguard.classfile.visitor.ClassVisitor;
 import proguard.util.*;
 
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
-public class KotlinMetadataAnnotation
+import static proguard.classfile.util.ClassUtil.*;
+
+public class KotlinAnnotation
 extends      SimpleProcessable
 implements   Processable
 {
-    public KmAnnotation kmAnnotation;
-    public Clazz        referencedAnnotationClass;
+    public String className;
+    public Clazz  referencedAnnotationClass;
 
-    // Keys correspond to methods in Java class files.
-    public Map<String, Method> referencedArgumentMethods;
+    public List<KotlinAnnotationArgument> arguments;
 
-    public KotlinMetadataAnnotation(KmAnnotation kmAnnotation)
+
+    public KotlinAnnotation(String className, List<KotlinAnnotationArgument> arguments)
     {
-        this.kmAnnotation = kmAnnotation;
+        this.className = className;
+        this.arguments = arguments;
+    }
+
+
+    public KotlinAnnotation(String className)
+    {
+        this(className, new ArrayList<>());
+    }
+
+
+    public void accept(Clazz clazz, KotlinAnnotatable annotatable, KotlinAnnotationVisitor kotlinAnnotationVisitor)
+    {
+        kotlinAnnotationVisitor.visitAnyAnnotation(clazz, annotatable, this);
     }
 
 
@@ -69,6 +87,12 @@ implements   Processable
     }
 
 
+    public void argumentsAccept(Clazz clazz, KotlinAnnotatable annotatable, KotlinAnnotationArgumentVisitor visitor)
+    {
+        this.arguments.forEach(argument -> argument.accept(clazz, annotatable, this, visitor));
+    }
+
+
     // Implementations for Object.
 
     @Override
@@ -76,21 +100,25 @@ implements   Processable
     {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        KotlinMetadataAnnotation that = (KotlinMetadataAnnotation) o;
-        return kmAnnotation.equals(that.kmAnnotation);
+        KotlinAnnotation that = (KotlinAnnotation) o;
+        return className.equals(that.className) && arguments.equals(that.arguments);
     }
 
 
     @Override
     public int hashCode()
     {
-        return Objects.hash(kmAnnotation);
+        return Objects.hash(className, arguments);
     }
 
 
     @Override
     public String toString()
     {
-        return kmAnnotation.getClassName() + "(" + kmAnnotation.getArguments() + ")";
+        return externalClassName(this.className) + "(" +
+               this.arguments.stream()
+                        .map(Objects::toString)
+                        .collect(Collectors.joining(", ")) +
+                ")";
     }
 }

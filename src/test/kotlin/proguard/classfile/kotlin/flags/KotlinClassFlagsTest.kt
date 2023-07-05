@@ -22,12 +22,15 @@ class KotlinClassFlagsTest : FreeSpec({
                 inner class InnerClass
                 companion object CompanionClass { }
             }
+            @JvmInline
+            value class ValueClass(val param:String)
             inline class InlineClass(val param:String)
             data class DataClass(val param:String)
             interface InterfaceClass
             enum class EnumClass(val param:String) { EnumEntry("foo") }
             annotation class AnnotationClass
             object ObjectClass
+            fun interface funInterfaceClass { fun invoke() }
             """.trimIndent()
         )
     )
@@ -44,7 +47,29 @@ class KotlinClassFlagsTest : FreeSpec({
             it.isInner shouldBe false
             it.isData shouldBe false
             it.isExternal shouldBe false
+            it.isValue shouldBe false
+            @Suppress("DEPRECATION")
             it.isInline shouldBe false
+            it.isFun shouldBe false
+        }
+    )
+
+    include(
+        testClassFlags(programClassPool.getClass("ValueClass")) {
+            it.isUsualClass shouldBe true
+            it.isInterface shouldBe false
+            it.isEnumClass shouldBe false
+            it.isEnumEntry shouldBe false
+            it.isAnnotationClass shouldBe false
+            it.isObject shouldBe false
+            it.isCompanionObject shouldBe false
+            it.isInner shouldBe false
+            it.isData shouldBe false
+            it.isExternal shouldBe false
+            it.isValue shouldBe true
+            @Suppress("DEPRECATION")
+            it.isInline shouldBe true
+            it.isFun shouldBe false
         }
     )
 
@@ -60,7 +85,10 @@ class KotlinClassFlagsTest : FreeSpec({
             it.isInner shouldBe false
             it.isData shouldBe false
             it.isExternal shouldBe false
+            it.isValue shouldBe true
+            @Suppress("DEPRECATION")
             it.isInline shouldBe true
+            it.isFun shouldBe false
         }
     )
 
@@ -76,7 +104,10 @@ class KotlinClassFlagsTest : FreeSpec({
             it.isInner shouldBe true
             it.isData shouldBe false
             it.isExternal shouldBe false
+            it.isValue shouldBe false
+            @Suppress("DEPRECATION")
             it.isInline shouldBe false
+            it.isFun shouldBe false
         }
     )
 
@@ -92,7 +123,10 @@ class KotlinClassFlagsTest : FreeSpec({
             it.isInner shouldBe false
             it.isData shouldBe false
             it.isExternal shouldBe false
+            it.isValue shouldBe false
+            @Suppress("DEPRECATION")
             it.isInline shouldBe false
+            it.isFun shouldBe false
         }
     )
 
@@ -108,7 +142,10 @@ class KotlinClassFlagsTest : FreeSpec({
             it.isInner shouldBe false
             it.isData shouldBe true
             it.isExternal shouldBe false
+            it.isValue shouldBe false
+            @Suppress("DEPRECATION")
             it.isInline shouldBe false
+            it.isFun shouldBe false
         }
     )
 
@@ -124,7 +161,10 @@ class KotlinClassFlagsTest : FreeSpec({
             it.isInner shouldBe false
             it.isData shouldBe false
             it.isExternal shouldBe false
+            it.isValue shouldBe false
+            @Suppress("DEPRECATION")
             it.isInline shouldBe false
+            it.isFun shouldBe false
         }
     )
 
@@ -140,7 +180,10 @@ class KotlinClassFlagsTest : FreeSpec({
             it.isInner shouldBe false
             it.isData shouldBe false
             it.isExternal shouldBe false
+            it.isValue shouldBe false
+            @Suppress("DEPRECATION")
             it.isInline shouldBe false
+            it.isFun shouldBe false
         }
     )
 
@@ -158,7 +201,10 @@ class KotlinClassFlagsTest : FreeSpec({
             it.isInner shouldBe false
             it.isData shouldBe false
             it.isExternal shouldBe false
+            it.isValue shouldBe false
+            @Suppress("DEPRECATION")
             it.isInline shouldBe false
+            it.isFun shouldBe false
         }
     )
 
@@ -174,7 +220,29 @@ class KotlinClassFlagsTest : FreeSpec({
             it.isInner shouldBe false
             it.isData shouldBe false
             it.isExternal shouldBe false
+            it.isValue shouldBe false
+            @Suppress("DEPRECATION")
             it.isInline shouldBe false
+            it.isFun shouldBe false
+        }
+    )
+
+    include(
+        testClassFlags(programClassPool.getClass("funInterfaceClass")) {
+            it.isUsualClass shouldBe false
+            it.isInterface shouldBe true
+            it.isEnumClass shouldBe false
+            it.isEnumEntry shouldBe false
+            it.isAnnotationClass shouldBe false
+            it.isObject shouldBe false
+            it.isCompanionObject shouldBe false
+            it.isInner shouldBe false
+            it.isData shouldBe false
+            it.isExternal shouldBe false
+            it.isValue shouldBe false
+            @Suppress("DEPRECATION")
+            it.isInline shouldBe false
+            it.isFun shouldBe true
         }
     )
 

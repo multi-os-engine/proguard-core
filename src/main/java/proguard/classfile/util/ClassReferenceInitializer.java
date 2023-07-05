@@ -36,6 +36,7 @@ import java.util.stream.Collectors;
 import static proguard.classfile.TypeConstants.INNER_CLASS_SEPARATOR;
 import static proguard.classfile.kotlin.KotlinConstants.DEFAULT_IMPLEMENTATIONS_SUFFIX;
 import static proguard.classfile.kotlin.KotlinConstants.DEFAULT_METHOD_SUFFIX;
+import static proguard.classfile.kotlin.KotlinAnnotationArgument.*;
 
 /**
  * This {@link ClassVisitor} initializes the references of all classes that
@@ -496,7 +497,9 @@ implements   ClassVisitor,
                 while (enclosingMethodAttribute.referencedClass            == null &&
                        myEnclosingClassName.indexOf(INNER_CLASS_SEPARATOR) != -1);
 
-                if (enclosingMethodAttribute.referencedClass == null)
+                if (enclosingMethodAttribute.referencedClass == null &&
+                         clazz != null &&
+                         missingClassWarningPrinter != null)
                 {
                     reportMissingClass(clazz.getName(), enclosingClassName);
                 }
@@ -543,6 +546,22 @@ implements   ClassVisitor,
         }
     }
 
+    @Override
+    public void visitSignatureAttribute(Clazz clazz, RecordComponentInfo recordComponentInfo, SignatureAttribute signatureAttribute)
+    {
+        try
+        {
+            signatureAttribute.referencedClasses =
+                findReferencedClasses(clazz,
+                                      signatureAttribute.getSignature(clazz));
+        }
+        catch (Exception corruptSignature)
+        {
+            // #2468: delete corrupt signature attributes, since they
+            // cannot be otherwise worked around.
+            recordComponentInfo.attributesAccept(clazz, new NamedAttributeDeleter(Attribute.SIGNATURE));
+        }
+    }
 
     @Override
     public void visitSignatureAttribute(Clazz clazz, SignatureAttribute signatureAttribute)
@@ -710,7 +729,9 @@ implements   ClassVisitor,
                   KotlinTypeVisitor,
                   KotlinTypeAliasVisitor,
                   KotlinValueParameterVisitor,
-                  KotlinTypeParameterVisitor
+                  KotlinTypeParameterVisitor,
+                  KotlinAnnotationVisitor,
+                  KotlinAnnotationArgumentVisitor
     {
         private final KotlinDefaultImplsInitializer                kotlinDefaultImplsInitializer          = new KotlinDefaultImplsInitializer();
         private final KotlinDefaultMethodInitializer               kotlinDefaultMethodInitializer         = new KotlinDefaultMethodInitializer();
@@ -782,13 +803,14 @@ implements   ClassVisitor,
                     .collect(Collectors.toList());
 
 
-            kotlinClassKindMetadata.typeParametersAccept(clazz, this);
-            kotlinClassKindMetadata.superTypesAccept(    clazz, this);
-            kotlinClassKindMetadata.constructorsAccept(  clazz, this);
+            kotlinClassKindMetadata.typeParametersAccept(                   clazz, this);
+            kotlinClassKindMetadata.superTypesAccept(                       clazz, this);
+            kotlinClassKindMetadata.constructorsAccept(                     clazz, this);
+            kotlinClassKindMetadata.inlineClassUnderlyingPropertyTypeAccept(clazz, this);
 
             visitKotlinDeclarationContainerMetadata(clazz, kotlinClassKindMetadata);
 
-            if (kotlinClassKindMetadata.flags.isInterface)
+            if (kotlinClassKindMetadata.flags.isInterface || kotlinClassKindMetadata.flags.isAnnotationClass)
             {
                 // Initialize the default implementations class of interfaces.
                 // The class will be an inner class and have a name like MyInterface$DefaultImpls.
@@ -808,7 +830,7 @@ implements   ClassVisitor,
                     // Initialize missing references from interface properties
                     // to their backing field.
                     kotlinClassKindMetadata.accept(clazz,
-                                                   new AllKotlinPropertiesVisitor(
+                                                   new AllPropertyVisitor(
                                                    new KotlinInterClassPropertyReferenceInitializer(
                                                        kotlinClassKindMetadata.referencedDefaultImplsClass)));
                 }
@@ -886,7 +908,7 @@ implements   ClassVisitor,
                 // Initialize missing references from properties in multi-file parts
                 // that have their backing field on the multi-file facade class.
                 kotlinMultiFilePartKindMetadata.accept(clazz,
-                                                       new AllKotlinPropertiesVisitor(
+                                                       new AllPropertyVisitor(
                                                        new KotlinInterClassPropertyReferenceInitializer(kotlinMultiFilePartKindMetadata.referencedFacadeClass)));
             }
         }
@@ -902,8 +924,8 @@ implements   ClassVisitor,
             {
                 kotlinPropertyMetadata.referencedBackingField =
                     strictMemberFinder.findField(clazz,
-                                                 kotlinPropertyMetadata.backingFieldSignature.getName(),
-                                                 kotlinPropertyMetadata.backingFieldSignature.getDesc());
+                                                 kotlinPropertyMetadata.backingFieldSignature.memberName,
+                                                 kotlinPropertyMetadata.backingFieldSignature.descriptor);
 
                 kotlinPropertyMetadata.referencedBackingFieldClass = strictMemberFinder.correspondingClass();
             }
@@ -912,24 +934,24 @@ implements   ClassVisitor,
             {
                 kotlinPropertyMetadata.referencedGetterMethod =
                     strictMemberFinder.findMethod(clazz,
-                                                  kotlinPropertyMetadata.getterSignature.getName(),
-                                                  kotlinPropertyMetadata.getterSignature.getDesc());
+                                                  kotlinPropertyMetadata.getterSignature.method,
+                                                  kotlinPropertyMetadata.getterSignature.descriptor.toString());
             }
 
             if (kotlinPropertyMetadata.setterSignature != null)
             {
                 kotlinPropertyMetadata.referencedSetterMethod =
                     strictMemberFinder.findMethod(clazz,
-                                                  kotlinPropertyMetadata.setterSignature.getName(),
-                                                  kotlinPropertyMetadata.setterSignature.getDesc());
+                                                  kotlinPropertyMetadata.setterSignature.method,
+                                                  kotlinPropertyMetadata.setterSignature.descriptor.toString());
             }
 
             if (kotlinPropertyMetadata.syntheticMethodForAnnotations != null)
             {
                 kotlinPropertyMetadata.referencedSyntheticMethodForAnnotations =
                     strictMemberFinder.findMethod(clazz,
-                                                  kotlinPropertyMetadata.syntheticMethodForAnnotations.getName(),
-                                                  kotlinPropertyMetadata.syntheticMethodForAnnotations.getDesc());
+                                                  kotlinPropertyMetadata.syntheticMethodForAnnotations.method,
+                                                  kotlinPropertyMetadata.syntheticMethodForAnnotations.descriptor.toString());
 
                 kotlinPropertyMetadata.referencedSyntheticMethodClass = strictMemberFinder.correspondingClass();
             }
@@ -954,8 +976,8 @@ implements   ClassVisitor,
             {
                 kotlinFunctionMetadata.referencedMethod =
                     strictMemberFinder.findMethod(kotlinFunctionMetadata.referencedMethodClass,
-                                                  kotlinFunctionMetadata.jvmSignature.getName(),
-                                                  kotlinFunctionMetadata.jvmSignature.getDesc());
+                                                  kotlinFunctionMetadata.jvmSignature.method,
+                                                  kotlinFunctionMetadata.jvmSignature.descriptor.toString());
             }
 
             if (kotlinFunctionMetadata.lambdaClassOriginName != null)
@@ -989,8 +1011,8 @@ implements   ClassVisitor,
             {
                 kotlinConstructorMetadata.referencedMethod =
                     strictMemberFinder.findMethod(clazz,
-                                                  kotlinConstructorMetadata.jvmSignature.getName(),
-                                                  kotlinConstructorMetadata.jvmSignature.getDesc());
+                                                  kotlinConstructorMetadata.jvmSignature.method,
+                                                  kotlinConstructorMetadata.jvmSignature.descriptor.toString());
             }
 
             kotlinConstructorMetadata.valueParametersAccept(clazz, kotlinClassKindMetadata, this);
@@ -1038,8 +1060,7 @@ implements   ClassVisitor,
                 );
             }
 
-            initializeAnnotations(clazz, kotlinTypeMetadata.annotations);
-
+            kotlinTypeMetadata.annotationsAccept(  clazz, this);
             kotlinTypeMetadata.typeArgumentsAccept(clazz, this);
             kotlinTypeMetadata.outerClassAccept(   clazz, this);
             kotlinTypeMetadata.upperBoundsAccept(  clazz, this);
@@ -1054,10 +1075,9 @@ implements   ClassVisitor,
                                    KotlinDeclarationContainerMetadata kotlinDeclarationContainerMetadata,
                                    KotlinTypeAliasMetadata            kotlinTypeAliasMetadata)
         {
-            initializeAnnotations(clazz, kotlinTypeAliasMetadata.annotations);
-
             kotlinTypeAliasMetadata.referencedDeclarationContainer = kotlinDeclarationContainerMetadata;
 
+            kotlinTypeAliasMetadata.annotationsAccept(   clazz, this);
             kotlinTypeAliasMetadata.underlyingTypeAccept(clazz, kotlinDeclarationContainerMetadata, this);
             kotlinTypeAliasMetadata.expandedTypeAccept(  clazz, kotlinDeclarationContainerMetadata, this);
             kotlinTypeAliasMetadata.typeParametersAccept(clazz, kotlinDeclarationContainerMetadata, this);
@@ -1103,34 +1123,62 @@ implements   ClassVisitor,
         @Override
         public void visitAnyTypeParameter(Clazz clazz, KotlinTypeParameterMetadata kotlinTypeParameterMetadata)
         {
-            initializeAnnotations(clazz, kotlinTypeParameterMetadata.annotations);
-
+            kotlinTypeParameterMetadata.annotationsAccept(clazz, this);
             kotlinTypeParameterMetadata.upperBoundsAccept(clazz, this);
         }
 
-        /**
-         * Initialize Kotlin annotations.
-         */
-        private void initializeAnnotations(Clazz clazz, List<KotlinMetadataAnnotation> annotations)
+        // Implementations for KotlinMetadataAnnotationVisitor
+
+        @Override
+        public void visitAnyAnnotation(Clazz clazz, KotlinAnnotatable annotatable, KotlinAnnotation annotation)
         {
-            for (KotlinMetadataAnnotation annotation : annotations)
+            annotation.referencedAnnotationClass = findClass(clazz, annotation.className);
+            if (annotation.referencedAnnotationClass != null)
             {
-                annotation.referencedAnnotationClass = findClass(clazz, annotation.kmAnnotation.getClassName());
-                if (annotation.referencedAnnotationClass != null)
-                {
-                    Set<String> argumentNames            = annotation.kmAnnotation.getArguments().keySet();
-                    Map<String, Method> referencedKeys   = new HashMap<String, Method>();
-                    for (String argumentName : argumentNames)
-                    {
-                        referencedKeys.put(argumentName, strictMemberFinder.findMethod(annotation.referencedAnnotationClass, argumentName, null));
-                    }
-                    annotation.referencedArgumentMethods = referencedKeys;
-                }
-                else
-                {
-                    annotation.referencedArgumentMethods = new HashMap<>();
-                }
+                annotation.argumentsAccept(clazz, annotatable, this);
             }
+        }
+
+        // Implementations for KotlinMetadataAnnotationArgumentVisitor
+
+        @Override
+        public void visitAnyArgument(Clazz                    clazz,
+                                     KotlinAnnotatable        annotatable,
+                                     KotlinAnnotation         annotation,
+                                     KotlinAnnotationArgument argument,
+                                     Value                    value)
+        {
+            argument.referencedAnnotationMethodClass =
+                    annotation.referencedAnnotationClass;
+            argument.referencedAnnotationMethod =
+                    strictMemberFinder.findMethod(
+                            annotation.referencedAnnotationClass,
+                            argument.name,
+                            null);
+        }
+
+        @Override
+        public void visitClassArgument(Clazz                               clazz,
+                                       KotlinAnnotatable                   annotatable,
+                                       KotlinAnnotation                    annotation,
+                                       KotlinAnnotationArgument            argument,
+                                       KotlinAnnotationArgument.ClassValue value)
+        {
+            this.visitAnyArgument(clazz, annotatable, annotation, argument, value);
+
+            value.referencedClass = findKotlinClass(clazz, value.className);
+        }
+
+        @Override
+        public void visitEnumArgument(Clazz                    clazz,
+                                      KotlinAnnotatable        annotatable,
+                                      KotlinAnnotation         annotation,
+                                      KotlinAnnotationArgument argument,
+                                      EnumValue                value)
+        {
+            this.visitAnyArgument(clazz, annotatable, annotation, argument, value);
+
+            value.referencedClass = findClass(clazz, value.className);
         }
     }
 
@@ -1367,7 +1415,7 @@ implements   ClassVisitor,
                 kotlinFunctionMetadata.referencedDefaultImplementationMethod =
                     strictMemberFinder.findMethod(
                         defaultImplsClass,
-                        kotlinFunctionMetadata.jvmSignature.getName(),
+                        kotlinFunctionMetadata.jvmSignature.method,
                         getDescriptor(kotlinDeclarationContainerMetadata, kotlinFunctionMetadata)
                     );
 
@@ -1388,7 +1436,7 @@ implements   ClassVisitor,
         {
             // Default implementation methods are static and have the interface
             // instance as its first parameter.
-            return kotlinFunctionMetadata.jvmSignature.getDesc()
+            return kotlinFunctionMetadata.jvmSignature.descriptor.toString()
                 .replace("(", "(L" + kotlinDeclarationContainerMetadata.ownerClassName + ";");
         }
     }
@@ -1524,8 +1572,8 @@ implements   ClassVisitor,
             {
                 kotlinPropertyMetadata.referencedBackingField =
                     strictMemberFinder.findField(this.clazz,
-                                           kotlinPropertyMetadata.backingFieldSignature.getName(),
-                                           kotlinPropertyMetadata.backingFieldSignature.getDesc());
+                                           kotlinPropertyMetadata.backingFieldSignature.memberName,
+                                           kotlinPropertyMetadata.backingFieldSignature.descriptor);
 
                 kotlinPropertyMetadata.referencedBackingFieldClass = strictMemberFinder.correspondingClass();
             }
@@ -1543,8 +1591,8 @@ implements   ClassVisitor,
             {
                 kotlinPropertyMetadata.referencedSyntheticMethodForAnnotations =
                     strictMemberFinder.findMethod(this.clazz,
-                                            kotlinPropertyMetadata.syntheticMethodForAnnotations.getName(),
-                                            kotlinPropertyMetadata.syntheticMethodForAnnotations.getDesc());
+                                                  kotlinPropertyMetadata.syntheticMethodForAnnotations.method,
+                                                  kotlinPropertyMetadata.syntheticMethodForAnnotations.descriptor.toString());
 
                 kotlinPropertyMetadata.referencedSyntheticMethodClass = strictMemberFinder.correspondingClass();
             }
@@ -1585,7 +1633,7 @@ implements   ClassVisitor,
 
             if (enclosingMethod              != null &&
                 currentFunction.jvmSignature != null &&
-                enclosingMethod.getName(enclosingMethodClass).equals(currentFunction.jvmSignature.getName()))
+                enclosingMethod.getName(enclosingMethodClass).equals(currentFunction.jvmSignature.method))
             {
                 currentFunction.referencedMethod      = enclosingMethod;
                 currentFunction.referencedMethodClass = enclosingMethodClass;
@@ -1629,8 +1677,11 @@ implements   ClassVisitor,
         @Override
         public void visitClassConstant(Clazz clazz, ClassConstant classConstant)
         {
-            clazz.kotlinMetadataAccept(new AllKotlinPropertiesVisitor(
-                                       new KotlinInterClassPropertyReferenceInitializer(classConstant.referencedClass)));
+            if (classConstant.referencedClass != null)
+            {
+                clazz.kotlinMetadataAccept(new AllPropertyVisitor(
+                                           new KotlinInterClassPropertyReferenceInitializer(classConstant.referencedClass)));
+            }
         }
     }
 
