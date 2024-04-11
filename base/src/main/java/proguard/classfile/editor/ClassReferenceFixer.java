@@ -19,6 +19,7 @@ package proguard.classfile.editor;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
 import proguard.classfile.ClassConstants;
 import proguard.classfile.Clazz;
 import proguard.classfile.Field;
@@ -113,10 +114,11 @@ import static proguard.classfile.kotlin.KotlinConstants.FUNCTION_NAME_MANGLE_SEP
 import static proguard.classfile.kotlin.KotlinConstants.TYPE_KOTLIN_JVM_JVMNAME;
 import static proguard.classfile.util.ClassUtil.internalSimpleClassName;
 
+
 /**
  * This {@link ClassVisitor} fixes references of constant pool entries, fields,
  * methods, attributes and kotlin metadata to classes whose names have
- * changed. Descriptors of member references are not updated yet.
+ * changed. Descriptors of programMember references are not updated yet.
  *
  * @see MemberReferenceFixer
  * @author Eric Lafortune
@@ -137,7 +139,7 @@ implements   ClassVisitor,
 {
     private static final Logger logger = LogManager.getLogger(ClassReferenceFixer.class);
 
-    private final boolean ensureUniqueMemberNames;
+    private NameGenerationStrategy newNameStrategy;
 
     private final KotlinReferenceFixer kotlinReferenceFixer = new KotlinReferenceFixer();
 
@@ -150,7 +152,21 @@ implements   ClassVisitor,
      */
     public ClassReferenceFixer(boolean ensureUniqueMemberNames)
     {
-        this.ensureUniqueMemberNames = ensureUniqueMemberNames;
+        newNameStrategy = ensureUniqueMemberNames ?
+            (programClass, programMember, originalName, originalDescriptor) -> originalName.equals(ClassConstants.METHOD_NAME_INIT) ?
+                ClassConstants.METHOD_NAME_INIT :
+                originalName + TypeConstants.SPECIAL_MEMBER_SEPARATOR + Long.toHexString(Math.abs(originalDescriptor.hashCode())) : null;
+    }
+
+    /**
+     * Creates a new ClassReferenceFixer.
+     * @param newNameStrategy specifies how class members whose descriptor
+     *                        changes should get a new name in order to avoid
+     *                        naming conflicts with similar members.
+     */
+    public ClassReferenceFixer(NameGenerationStrategy newNameStrategy)
+    {
+        this.newNameStrategy = newNameStrategy;
     }
 
 
@@ -229,10 +245,10 @@ implements   ClassVisitor,
                 constantPoolEditor.addUtf8Constant(newDescriptor);
 
             // Update the name, if requested.
-            if (ensureUniqueMemberNames)
+            if (newNameStrategy != null)
             {
                 String name    = programMember.getName(programClass);
-                String newName = newUniqueMemberName(name, descriptor);
+                String newName = newNameStrategy.getNewName(programClass, programMember, name, descriptor);
                 programMember.u2nameIndex =
                     constantPoolEditor.addUtf8Constant(newName);
             }
@@ -1084,17 +1100,6 @@ implements   ClassVisitor,
 
 
     /**
-     * Returns a unique class member name, based on the given name and descriptor.
-     */
-    private String newUniqueMemberName(String name, String descriptor)
-    {
-        return name.equals(ClassConstants.METHOD_NAME_INIT) ?
-            ClassConstants.METHOD_NAME_INIT :
-            name + TypeConstants.SPECIAL_MEMBER_SEPARATOR + Long.toHexString(Math.abs((descriptor).hashCode()));
-    }
-
-
-    /**
      * Returns the new class name based on the given class name and the new
      * name of the given referenced class. Class names of array types
      * are handled properly.
@@ -1206,5 +1211,23 @@ implements   ClassVisitor,
 
             annotationsAttributeEditor.addAnnotation(jvmName);
         }
+    }
+
+
+    /**
+     * This interface provides an abstraction on how a {@link Member} should be renamed when its descriptor
+     * need to be updated. 
+     */
+    public interface NameGenerationStrategy
+    {
+        /**
+         * A method for generating a new name for a program member.
+         * @param programClass       The program class that the ClassReferenceFixer is visiting.
+         * @param programMember      The program member that the ClassReferenceFixer is visiting.
+         * @param originalName       The original name of the program member.
+         * @param originalDescriptor The original descriptor of the program member.
+         * @return The new name of the program member.
+         */
+        String getNewName(ProgramClass programClass, ProgramMember programMember, String originalName, String originalDescriptor);
     }
 }

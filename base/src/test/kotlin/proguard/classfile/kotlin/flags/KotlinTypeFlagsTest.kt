@@ -55,8 +55,6 @@ class KotlinTypeFlagsTest : FreeSpec({
                     withArg {
                         it.flags.isNullable shouldBe false
                         it.flags.isSuspend shouldBe false
-
-                        it.flags.common.hasAnnotations shouldBe false
                     }
                 )
             }
@@ -73,8 +71,6 @@ class KotlinTypeFlagsTest : FreeSpec({
                     withArg {
                         it.flags.isNullable shouldBe false
                         it.flags.isSuspend shouldBe false
-
-                        it.flags.common.hasAnnotations shouldBe false
                     }
                 )
             }
@@ -93,8 +89,6 @@ class KotlinTypeFlagsTest : FreeSpec({
                     withArg {
                         it.flags.isNullable shouldBe true
                         it.flags.isSuspend shouldBe false
-
-                        it.flags.common.hasAnnotations shouldBe false
                     }
                 )
             }
@@ -110,8 +104,6 @@ class KotlinTypeFlagsTest : FreeSpec({
                     clazz,
                     withArg {
                         it.flags.isNullable shouldBe true
-
-                        it.flags.common.hasAnnotations shouldBe false
                     }
                 )
             }
@@ -130,8 +122,6 @@ class KotlinTypeFlagsTest : FreeSpec({
                     withArg {
                         it.flags.isNullable shouldBe false
                         it.flags.isSuspend shouldBe true
-
-                        it.flags.common.hasAnnotations shouldBe false
                     }
                 )
             }
@@ -148,8 +138,6 @@ class KotlinTypeFlagsTest : FreeSpec({
                     withArg {
                         it.flags.isNullable shouldBe false
                         it.flags.isSuspend shouldBe true
-
-                        it.flags.common.hasAnnotations shouldBe false
                     }
                 )
             }
@@ -169,8 +157,6 @@ class KotlinTypeFlagsTest : FreeSpec({
                         it.flags.isNullable shouldBe false
                         it.flags.isSuspend shouldBe false
                         it.flags.isDefinitelyNonNull shouldBe true
-
-                        it.flags.common.hasAnnotations shouldBe false
                     }
                 )
             }
@@ -189,6 +175,104 @@ class KotlinTypeFlagsTest : FreeSpec({
                     }
                 )
             }
+        }
+    }
+
+    "Given a type argument with name annotation" - {
+        val clazz = ClassPoolBuilder.fromSource(
+            KotlinSource(
+                "Test.kt",
+                """
+                val namedParam: (test: String) -> Unit = {}
+                """
+            )
+        ).programClassPool.getClass("TestKt")
+
+        "Then the flags should be initialized correctly" {
+            clazz.accept(
+                ReferencedKotlinMetadataVisitor(
+                    AllTypeVisitor(
+                        KotlinTypeFilter(
+                            {
+                                it.className == "kotlin/Function1" && it.typeArguments.size == 2
+                            },
+                            { _, kotlinTypeMetadata ->
+                                kotlinTypeMetadata.typeArguments?.get(0)?.flags?.isNullable shouldBe false
+                                kotlinTypeMetadata.typeArguments?.get(0)?.flags?.isSuspend shouldBe false
+                                kotlinTypeMetadata.typeArguments?.get(0)?.flags?.isDefinitelyNonNull shouldBe false
+                            }
+                        )
+                    )
+                )
+            )
+        }
+
+        "Then the flags should be written and re-initialized correctly" {
+            clazz.accept(
+                ReWritingMetadataVisitor(
+                    AllTypeVisitor(
+                        KotlinTypeFilter(
+                            {
+                                it.className == "kotlin/Function1" && it.typeArguments.size == 2
+                            },
+                            { _, kotlinTypeMetadata ->
+                                kotlinTypeMetadata.typeArguments?.get(0)?.flags?.isNullable shouldBe false
+                                kotlinTypeMetadata.typeArguments?.get(0)?.flags?.isSuspend shouldBe false
+                                kotlinTypeMetadata.typeArguments?.get(0)?.flags?.isDefinitelyNonNull shouldBe false
+                            }
+                        )
+                    )
+                )
+            )
+        }
+    }
+
+    "Given a nullable type argument" - {
+        val clazz = ClassPoolBuilder.fromSource(
+            KotlinSource(
+                "Test.kt",
+                """
+                val namedParam: (String?) -> Unit = {}
+                """
+            )
+        ).programClassPool.getClass("TestKt")
+
+        "Then the flags should be initialized correctly" {
+            clazz.accept(
+                ReferencedKotlinMetadataVisitor(
+                    AllTypeVisitor(
+                        KotlinTypeFilter(
+                            {
+                                it.className == "kotlin/Function1" && it.typeArguments.size == 2
+                            },
+                            { _, kotlinTypeMetadata ->
+                                kotlinTypeMetadata.typeArguments?.get(0)?.flags?.isNullable shouldBe true
+                                kotlinTypeMetadata.typeArguments?.get(0)?.flags?.isSuspend shouldBe false
+                                kotlinTypeMetadata.typeArguments?.get(0)?.flags?.isDefinitelyNonNull shouldBe false
+                            }
+                        )
+                    )
+                )
+            )
+        }
+
+        "Then the flags should be written and re-initialized correctly" {
+            clazz.accept(
+                ReWritingMetadataVisitor(
+                    AllTypeVisitor(
+                        KotlinTypeFilter(
+                            {
+                                it.className == "kotlin/Function1" && it.typeArguments.size == 2
+                            },
+                            { _, kotlinTypeMetadata ->
+                                kotlinTypeMetadata.typeArguments?.get(0)?.flags?.isNullable shouldBe true
+                                kotlinTypeMetadata.typeArguments?.get(0)?.flags?.isSuspend shouldBe false
+                                kotlinTypeMetadata.typeArguments?.get(0)?.flags?.isDefinitelyNonNull shouldBe false
+                            }
+                        )
+                    )
+                )
+            )
         }
     }
 })

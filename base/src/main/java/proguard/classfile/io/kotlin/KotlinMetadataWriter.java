@@ -1808,8 +1808,6 @@ implements ClassVisitor,
     {
         Set<Flag> flagSet = new HashSet<>();
 
-        flagSet.addAll(convertCommonFlags(flags.common));
-
         if (flags.isNullable)          flagSet.add(Flag.Type.IS_NULLABLE);
         if (flags.isSuspend)           flagSet.add(Flag.Type.IS_SUSPEND);
         if (flags.isDefinitelyNonNull) flagSet.add(Flag.Type.IS_DEFINITELY_NON_NULL);
@@ -1821,8 +1819,6 @@ implements ClassVisitor,
     private static int convertTypeParameterFlags(KotlinTypeParameterFlags flags)
     {
         Set<Flag> flagSet = new HashSet<>();
-
-        flagSet.addAll(convertCommonFlags(flags.common));
 
         if (flags.isReified) flagSet.add(Flag.TypeParameter.IS_REIFIED);
 

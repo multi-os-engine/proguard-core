@@ -1,14 +1,35 @@
+## Version 9.1.1
+
+### Bugfixes
+
+- Enable fix previously behind system property: fix `TypedReferenceValue.generalize()` not setting `mayBeExtension` to true when generalizing to common parent type.
+- Avoid printing `PartialEvaluator` messages when an `ExcessiveComplexityException` occurs.
+- Fix incorrect writing of flags for type parameters with name annotations.
+- Fix incorrect writing of flags for reified type parameters.
+- Fix model for types and type parameters, removing the incorrect `HAS_ANNOTATION` common flag.
+
+### Improved
+
+- Enable new `PartialEvaluator` error message format by default.
+- Add the ability to implement a custom renaming strategy for `ClassReferenceFixer`.
+- Add new `MaxStackSizeComputer` to compute the maximum stack size of a code attribute which is more memory efficient than the existing `StackSizeComputer`.
+- Add `IdentifiedArrayReferenceValue.generalize()` to maintain `ID` when applied to two instances with same `ID`.
+
 ## Version 9.1
 
 ### Improved
 
-- Added `PartialEvaluator` JSON output for use with [proguard-core-visualizer](https://github.com/Guardsquare/proguard-core-visualizer).
+- Added `PartialEvaluator` JSON output.
 - Improve `PartialEvaluator` error messages when enabled with `PartialEvaluator.Builder.setPrettyPrinting()`.
 - Improve documentation for the `PartialEvaluator` [https://guardsquare.github.io/proguard-core/partialevaluator.html](https://guardsquare.github.io/proguard-core/partialevaluator.html).
 
 ### Bug fixes
 
 - Fix `UnsupportedOperationException` when trying to shrink Kotlin metadata from a lambda function.
+- Change behavior of array index out of bounds during partial evaluation, which is now handled as an unknown value instead of throwing an exception in the partial evaluator method.
+- Fix `IllegalArgumentException` when joining values with different computational type during value analysis.
+- Fix `TypedReferenceValue.generalize()` not setting `mayBeExtension` to true when generalizing to common parent type. For now only available experimentally by setting the system property `proguard.pe.newextensiongeneralize`.
+- Fix `MultiTypeReferenceValue` possibly using an imprecise type metadata (i.e., mayBeExtension, mayBeNull) in the generalized type.
 
 ### API Changes
 
