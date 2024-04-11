@@ -1,27 +1,22 @@
-// Gradle build script for the ProGuardCORE examples.
-
-apply plugin: 'java'
+plugins {
+    id 'java'
+    id 'application'
+}
 
 repositories {
     mavenCentral()
 }
 
-sourceCompatibility = "${target}"
-targetCompatibility = "${target}"
-
-sourceSets.main {
-    java {
-        srcDirs = ['src']
-    }
-    resources {
-        srcDirs = ['src']
-        include '**/*.properties'
-        include '**/*.gif'
-        include '**/*.png'
-        include '**/*.pro'
-    }
+dependencies {
+    implementation project(':proguard-core')
+    implementation project(':proguard-core-android')
 }
 
-dependencies {
-    compile 'com.guardsquare:proguard-core:7.0.1'
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(11))
+    }
+
+    withSourcesJar()
+    withJavadocJar()
 }

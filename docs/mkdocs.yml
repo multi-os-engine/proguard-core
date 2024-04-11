@@ -4,7 +4,7 @@
 site_name:        ProGuardCORE
 site_description: The ProGuardCORE library
 site_author:      Guardsquare NV
-copyright:        Copyright &copy; 2002-2020 Guardsquare NV
+copyright:        Copyright &copy; 2002-2022 Guardsquare NV
 
 repo_name: guardsquare/proguard-core
 repo_url: https://github.com/guardsquare/proguard-core
@@ -57,19 +57,26 @@ markdown_extensions:
 - codehilite
 - footnotes
 - def_list
+- pymdownx.superfences:
+    custom_fences:
+      - name: mermaid
+        class: mermaid
+        format: !!python/name:pymdownx.superfences.fence_code_format
 
 ###################################################################
 # Page tree
 ###################################################################
 nav:
-- Introduction:        index.md
-- Reading classes:     reading.md
-- Creating classes:    creating.md
-- Editing classes:     editing.md
-- Pattern matching:    patternmatching.md
-- Analyzing code:      analyzing.md
-- Kotlin metadata:     kotlin.md
-- License:             license.md
-- Downloads:           downloads.md
-- Building:            building.md
-- Release notes:       releasenotes.md
+- Introduction:                                 index.md
+- Reading classes:                              reading.md
+- Creating classes:                             creating.md
+- Editing classes:                              editing.md
+- Pattern matching:                             patternmatching.md
+- Analyzing code:
+  - Data flow analysis with partial evaluation: partialevaluator.md
+  - Taint analysis with CPA:                    taintcpa.md
+- Kotlin metadata:                              kotlin.md
+- License:                                      license.md
+- Downloads:                                    downloads.md
+- Building:                                     building.md
+- Release notes:                                releasenotes.md
