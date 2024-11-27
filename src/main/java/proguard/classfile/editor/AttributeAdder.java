@@ -538,7 +538,7 @@ implements   AttributeVisitor
 
         RuntimeVisibleParameterAnnotationsAttribute newParameterAnnotationsAttribute =
             new RuntimeVisibleParameterAnnotationsAttribute(constantAdder.addConstant(clazz, runtimeVisibleParameterAnnotationsAttribute.u2attributeNameIndex),
-                                                            0,
+                                                            runtimeVisibleParameterAnnotationsAttribute.u1parametersCount,
                                                             new int[runtimeVisibleParameterAnnotationsAttribute.u1parametersCount],
                                                             parameterAnnotations);
 
@@ -565,7 +565,7 @@ implements   AttributeVisitor
 
         RuntimeInvisibleParameterAnnotationsAttribute newParameterAnnotationsAttribute =
             new RuntimeInvisibleParameterAnnotationsAttribute(constantAdder.addConstant(clazz, runtimeInvisibleParameterAnnotationsAttribute.u2attributeNameIndex),
-                                                              0,
+                                                              runtimeInvisibleParameterAnnotationsAttribute.u1parametersCount,
                                                               new int[runtimeInvisibleParameterAnnotationsAttribute.u1parametersCount],
                                                               parameterAnnotations);
 
